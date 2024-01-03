@@ -4,11 +4,24 @@ version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "tokengrams"
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "tokengrams"
+path = "src/main.rs"
 
 [dependencies]
+anyhow = "1.0.79"
+bincode = "1.3.3"
 clap = { version = "4.4.11", features = ["derive"] }
+flate2 = "1.0"
+float-cmp = "0.9.0"
+pyo3 = { version = "0.20.1", features = ["anyhow", "extension-module"] }
 rayon = "1.8.0"
 serde_json = "1.0.108"
+sucds = { version = "0.4.0", features = ["intrinsics"] }
 tokenizers = { version = "0.15.0", features = ["http"] }
-tongrams = { git = "https://github.com/norabelrose/tongrams-rs.git" }
+yada = "0.5.0"
 zstd = "0.13.0"
