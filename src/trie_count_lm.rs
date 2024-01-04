@@ -7,6 +7,7 @@ use std::path::Path;
 use anyhow::Result;
 use sucds::{util::IntIO, Searial};
 
+use crate::WordGram;
 use crate::loader::{GramsFileLoader, GramsGzFileLoader, GramsLoader, GramsTextLoader};
 use crate::rank_array::RankArray;
 use crate::trie_array::TrieArray;
@@ -28,7 +29,7 @@ pub struct TrieCountLm<T, V, A> {
 impl<T, V, A> TrieCountLm<T, V, A>
 where
     T: TrieArray,
-    V: Vocabulary,
+    V: Vocabulary<GramType = WordGram>,
     A: RankArray,
 {
     /// Builds the index from *N*-gram counts files.
@@ -91,7 +92,15 @@ where
         }
         TrieCountLmBuilder::new(loaders)?.build()
     }
+}
 
+// Methods which work for TokenGram as well as WordGram.
+impl<T, V, A> TrieCountLm<T, V, A>
+where
+    T: TrieArray,
+    V: Vocabulary,
+    A: RankArray,
+{
     /// Serializes the index into the writer.
     pub fn serialize_into<W>(&self, mut writer: W) -> Result<usize>
     where
@@ -230,7 +239,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EliasFanoTrieCountLm, Gram, SimpleTrieCountLm};
+    use crate::{WordTrieLm, WordGram, SimpleTrieCountLm};
 
     const GRAMS_1: &'static str = "4
 A\t10
@@ -266,11 +275,11 @@ D D D\t1
     const C: usize = 2;
     const D: usize = 3;
 
-    fn test_vocabulary<V: Vocabulary>(vocab: &V) {
-        assert_eq!(vocab.get(Gram::from_str("A")), Some(A));
-        assert_eq!(vocab.get(Gram::from_str("B")), Some(B));
-        assert_eq!(vocab.get(Gram::from_str("C")), Some(C));
-        assert_eq!(vocab.get(Gram::from_str("D")), Some(D));
+    fn test_vocabulary<V: Vocabulary<GramType = WordGram>>(vocab: &V){
+        assert_eq!(vocab.get(WordGram::from_str("A")), Some(A));
+        assert_eq!(vocab.get(WordGram::from_str("B")), Some(B));
+        assert_eq!(vocab.get(WordGram::from_str("C")), Some(C));
+        assert_eq!(vocab.get(WordGram::from_str("D")), Some(D));
     }
 
     fn test_unigrams<A: RankArray>(ra: &A) {
@@ -327,7 +336,7 @@ D D D\t1
 
     #[test]
     fn test_ef_components() {
-        let lm = EliasFanoTrieCountLm::from_texts(vec![GRAMS_1, GRAMS_2, GRAMS_3]).unwrap();
+        let lm = WordTrieLm::from_texts(vec![GRAMS_1, GRAMS_2, GRAMS_3]).unwrap();
         test_vocabulary(&lm.vocab);
         test_unigrams(&lm.count_ranks[0]);
         test_bigrams(&lm.arrays[0], &lm.count_ranks[1]);
@@ -343,56 +352,56 @@ D D D\t1
         let mut gp = loader.parser().unwrap();
         while let Some(rec) = gp.next_count_record() {
             let rec = rec.unwrap();
-            assert_eq!(lookuper.with_gram(rec.gram()), Some(rec.count()));
+            assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_2.as_bytes());
         let mut gp = loader.parser().unwrap();
         while let Some(rec) = gp.next_count_record() {
             let rec = rec.unwrap();
-            assert_eq!(lookuper.with_gram(rec.gram()), Some(rec.count()));
+            assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_3.as_bytes());
         let mut gp = loader.parser().unwrap();
         while let Some(rec) = gp.next_count_record() {
             let rec = rec.unwrap();
-            assert_eq!(lookuper.with_gram(rec.gram()), Some(rec.count()));
+            assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
-        assert_eq!(lookuper.with_gram(Gram::from_str("E")), None);
-        assert_eq!(lookuper.with_gram(Gram::from_str("B A")), None);
-        assert_eq!(lookuper.with_gram(Gram::from_str("B B A")), None);
+        assert_eq!(lookuper.with_gram(WordGram::from_str("E")), None);
+        assert_eq!(lookuper.with_gram(WordGram::from_str("B A")), None);
+        assert_eq!(lookuper.with_gram(WordGram::from_str("B B A")), None);
     }
 
     #[test]
     fn test_ef_lookup() {
-        let lm = EliasFanoTrieCountLm::from_texts(vec![GRAMS_1, GRAMS_2, GRAMS_3]).unwrap();
+        let lm = WordTrieLm::from_texts(vec![GRAMS_1, GRAMS_2, GRAMS_3]).unwrap();
         let mut lookuper = lm.lookuper();
 
         let loader = GramsTextLoader::new(GRAMS_1.as_bytes());
         let mut gp = loader.parser().unwrap();
         while let Some(rec) = gp.next_count_record() {
             let rec = rec.unwrap();
-            assert_eq!(lookuper.with_gram(rec.gram()), Some(rec.count()));
+            assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_2.as_bytes());
         let mut gp = loader.parser().unwrap();
         while let Some(rec) = gp.next_count_record() {
             let rec = rec.unwrap();
-            assert_eq!(lookuper.with_gram(rec.gram()), Some(rec.count()));
+            assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_3.as_bytes());
         let mut gp = loader.parser().unwrap();
         while let Some(rec) = gp.next_count_record() {
             let rec = rec.unwrap();
-            assert_eq!(lookuper.with_gram(rec.gram()), Some(rec.count()));
+            assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
-        assert_eq!(lookuper.with_gram(Gram::from_str("E")), None);
-        assert_eq!(lookuper.with_gram(Gram::from_str("B A")), None);
-        assert_eq!(lookuper.with_gram(Gram::from_str("B B A")), None);
+        assert_eq!(lookuper.with_gram(WordGram::from_str("E")), None);
+        assert_eq!(lookuper.with_gram(WordGram::from_str("B A")), None);
+        assert_eq!(lookuper.with_gram(WordGram::from_str("B B A")), None);
     }
 }

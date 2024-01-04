@@ -1,1 +1,1 @@
-from .tokengrams import Trie
+from .tokengrams import WordTrie

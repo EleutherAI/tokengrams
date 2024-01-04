@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use anyhow::{anyhow, Result};
 
 use crate::vocabulary::Vocabulary;
-use crate::Gram;
+use crate::WordGram;
 
 /// Simple implementation of [`Vocabulary`] with `HashMap`.
 #[derive(Default, Debug)]
@@ -13,15 +13,17 @@ pub struct SimpleVocabulary {
 }
 
 impl Vocabulary for SimpleVocabulary {
+    type GramType = WordGram;
+
     fn new() -> Self {
         Self {
             map: HashMap::new(),
         }
     }
 
-    fn build(tokens: &[Gram<u8>]) -> Result<Self> {
+    fn build<T: IntoIterator<Item = Self::GramType>>(tokens: T) -> Result<Self> {
         let mut map = HashMap::new();
-        for (id, token) in tokens.iter().enumerate() {
+        for (id, token) in tokens.into_iter().enumerate() {
             if let Some(v) = map.insert(token.to_string(), id) {
                 return Err(anyhow!("Duplicated key: {:?} => {}", token, v));
             }
@@ -56,7 +58,7 @@ impl Vocabulary for SimpleVocabulary {
         serde_json::json!({})
     }
 
-    fn get(&self, token: Gram<u8>) -> Option<usize> {
+    fn get(&self, token: Self::GramType) -> Option<usize> {
         self.map.get(&token.to_string()).copied()
     }
 }

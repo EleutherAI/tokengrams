@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use std::io::{BufRead, BufReader, Read};
 
-use crate::GRAM_COUNT_SEPARATOR;
+use crate::{GRAM_COUNT_SEPARATOR, Gram, WordGram};
 use crate::{CountRecord, ProbRecord};
 
 /// Parser for a *N*-gram file of counts or probs/backoff-weights.
@@ -37,7 +37,7 @@ where
     }
 
     /// Parses a next [`CountRecord`].
-    pub fn next_count_record(&mut self) -> Option<Result<CountRecord>> {
+    pub fn next_count_record(&mut self) -> Option<Result<CountRecord<WordGram>>> {
         self.num_parsed += 1;
         if self.num_parsed > self.num_grams {
             return None;
@@ -54,15 +54,15 @@ where
             return Some(Err(anyhow!("Invalid line, {:?}", items)));
         }
 
-        let gram = items[0].to_string();
+        let gram = WordGram::new(items[0].as_bytes());
         items[1].parse().map_or_else(
             |_| Some(Err(anyhow!("Parse error, {:?}", items))),
-            |count| Some(Ok(CountRecord::new(gram, count))),
+            |count| Some(Ok(CountRecord { gram, count })),
         )
     }
 
     /// Parses a next [`ProbRecord`].
-    pub fn next_prob_record(&mut self) -> Option<Result<ProbRecord>> {
+    pub fn next_prob_record(&mut self) -> Option<Result<ProbRecord<WordGram>>> {
         self.num_parsed += 1;
         if self.num_parsed > self.num_grams {
             return None;
@@ -79,7 +79,7 @@ where
             return Some(Err(anyhow!("Invalid line, {:?}", items)));
         }
 
-        let gram = items[0].to_string();
+        let gram = WordGram::new(items[0].as_bytes());
         items[1].parse().map_or_else(
             |_| Some(Err(anyhow!("Parse error, {:?}", items))),
             |prob| {
@@ -94,10 +94,10 @@ where
                 if let Some(x) = items.get(2) {
                     x.parse().map_or_else(
                         |_| Some(Err(anyhow!("Parse error, {:?}", items))),
-                        |backoff| Some(Ok(ProbRecord::new(gram, prob, backoff))),
+                        |backoff| Some(Ok(ProbRecord { gram, prob, backoff })),
                     )
                 } else {
-                    Some(Ok(ProbRecord::new(gram, prob, 0.0)))
+                    Some(Ok(ProbRecord { gram, prob, backoff: 0.0 }))
                 }
             },
         )
@@ -133,10 +133,10 @@ D D D\t1
         let mut gp = GramsParser::new(BufReader::new(COUNT_GRAMS_1.as_bytes())).unwrap();
         assert_eq!(gp.num_grams(), 4);
         for (gram, count) in [("A", 10), ("B", 7), ("C", 4), ("D", 1)] {
-            let gram = gram.to_string();
+            let gram = WordGram::new(gram.as_bytes());
             assert_eq!(
                 gp.next_count_record().unwrap().unwrap(),
-                CountRecord::new(gram, count)
+                CountRecord { gram, count }
             );
         }
         assert!(gp.next_count_record().is_none());
@@ -147,10 +147,10 @@ D D D\t1
         let mut gp = GramsParser::new(BufReader::new(COUNT_GRAMS_2.as_bytes())).unwrap();
         assert_eq!(gp.num_grams(), 4);
         for (gram, count) in [("A A", 1), ("A C", 2), ("B B", 3), ("D C", 1)] {
-            let gram = gram.to_string();
+            let gram = WordGram::new(gram.as_bytes());
             assert_eq!(
                 gp.next_count_record().unwrap().unwrap(),
-                CountRecord::new(gram, count)
+                CountRecord { gram, count }
             );
         }
         assert!(gp.next_count_record().is_none());
@@ -161,10 +161,10 @@ D D D\t1
         let mut gp = GramsParser::new(BufReader::new(COUNT_GRAMS_3.as_bytes())).unwrap();
         assert_eq!(gp.num_grams(), 3);
         for (gram, count) in [("A A C", 2), ("B B C", 1), ("D D D", 1)] {
-            let gram = gram.to_string();
+            let gram = WordGram::new(gram.as_bytes());
             assert_eq!(
                 gp.next_count_record().unwrap().unwrap(),
-                CountRecord::new(gram, count)
+                CountRecord { gram, count }
             );
         }
         assert!(gp.next_count_record().is_none());
@@ -200,10 +200,10 @@ D D D\t-0.98
             ("C", -2.22, 0.0),
             ("D", -1.91, -0.62),
         ] {
-            let gram = gram.to_string();
+            let gram = WordGram::new(gram.as_bytes());
             assert_eq!(
                 gp.next_prob_record().unwrap().unwrap(),
-                ProbRecord::new(gram, prob, backoff)
+                ProbRecord { gram, prob, backoff }
             );
         }
         assert!(gp.next_prob_record().is_none());
@@ -219,10 +219,10 @@ D D D\t-0.98
             ("B B", -1.03, -0.32),
             ("D C", -1.08, 0.0),
         ] {
-            let gram = gram.to_string();
+            let gram = WordGram::new(gram.as_bytes());
             assert_eq!(
                 gp.next_prob_record().unwrap().unwrap(),
-                ProbRecord::new(gram, prob, backoff)
+                ProbRecord { gram, prob, backoff }
             );
         }
         assert!(gp.next_prob_record().is_none());
@@ -237,10 +237,10 @@ D D D\t-0.98
             ("B B C", -0.53, 0.0),
             ("D D D", -0.98, 0.0),
         ] {
-            let gram = gram.to_string();
+            let gram = WordGram::new(gram.as_bytes());
             assert_eq!(
                 gp.next_prob_record().unwrap().unwrap(),
-                ProbRecord::new(gram, prob, backoff)
+                ProbRecord { gram, prob, backoff }
             );
         }
         assert!(gp.next_prob_record().is_none());

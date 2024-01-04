@@ -3,28 +3,65 @@ use std::path::PathBuf;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use crate::WordGram;
+use crate::gram::{Gram, TokenGram};
 use crate::loader::{GramsFileFormats, GramsLoader, GramsTextLoader};
 use crate::trie_array::EliasFanoTrieArray;
 use crate::trie_count_lm::{TrieCountLm, TrieCountLmBuilder, TrieCountLmLookuper};
 use crate::rank_array::EliasFanoRankArray;
-use crate::vocabulary::DoubleArrayVocabulary;
+use crate::vocabulary::{DoubleArrayVocabulary, IdentityVocabulary};
 
-/// Elias-Fano Trie implementation of [`TrieCountLm`].
-/// This configuration is similar to `ef_trie_PSEF_ranks_count_lm` in the original `tongrams`.
-pub type EliasFanoTrieCountLm =
+pub type TokenTrieLm = TrieCountLm<EliasFanoTrieArray, IdentityVocabulary, EliasFanoRankArray>;
+pub type WordTrieLm =
     TrieCountLm<EliasFanoTrieArray, DoubleArrayVocabulary, EliasFanoRankArray>;
 
+
 #[pyclass(frozen)]
-pub struct Trie {
-    trie: EliasFanoTrieCountLm,
+pub struct TokenTrie {
+    trie: TokenTrieLm,
 }
 
 #[pymethods]
-impl Trie {
+impl TokenTrie {
+    #[staticmethod]
+    pub fn from_bytes(bytes: Vec<u8>) -> PyResult<Self> {
+        Ok(Self {
+            trie: TokenTrieLm::deserialize_from(&bytes[..])?,
+        })
+    }
+
+    pub fn find(&self, gram: Vec<u16>) -> Option<usize> {
+        let mut lookuper = TrieCountLmLookuper::new(&self.trie);
+        lookuper.with_gram(TokenGram::new(gram))
+    }
+
+    pub fn num_orders(&self) -> usize {
+        self.trie.num_orders()
+    }
+
+    pub fn num_grams(&self) -> usize {
+        self.trie.num_grams()
+    }
+
+    pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
+        let mut bytes = Vec::new();
+        self.trie.serialize_into(&mut bytes)?;
+        Ok(bytes)
+    }
+}
+
+
+#[pyclass(frozen)]
+pub struct WordTrie {
+    trie: WordTrieLm,
+}
+
+#[pymethods]
+impl WordTrie {
     #[staticmethod]
     pub fn from_files(filepaths: Vec<PathBuf>, fmt: &str) -> PyResult<Self> {
         Ok(Self {
-            trie: EliasFanoTrieCountLm::from_files(&filepaths, match fmt {
+            trie: WordTrieLm::from_files(&filepaths, match fmt {
                 "plain" => GramsFileFormats::Plain,
                 "gzip" => GramsFileFormats::Gzip,
                 _ => return Err(PyValueError::new_err("Invalid format")),
@@ -35,7 +72,7 @@ impl Trie {
     #[staticmethod]
     pub fn from_bytes(bytes: Vec<u8>) -> PyResult<Self> {
         Ok(Self {
-            trie: EliasFanoTrieCountLm::deserialize_from(&bytes[..])?,
+            trie: WordTrieLm::deserialize_from(&bytes[..])?,
         })
     }
 
@@ -55,7 +92,7 @@ impl Trie {
 
     pub fn find(&self, gram: &str) -> Option<usize> {
         let mut lookuper = TrieCountLmLookuper::new(&self.trie);
-        lookuper.with_str(gram)
+        lookuper.with_gram(WordGram::from_str(gram))
     }
 
     pub fn num_orders(&self) -> usize {
@@ -71,12 +108,4 @@ impl Trie {
         self.trie.serialize_into(&mut bytes)?;
         Ok(bytes)
     }
-}
-
-
-/// A Python module implemented in Rust.
-#[pymodule]
-fn tokengrams(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<Trie>()?;
-    Ok(())
 }

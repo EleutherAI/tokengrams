@@ -12,42 +12,20 @@ pub struct SortedArrayMapper {
 impl SortedArrayMapper {
     #[inline(always)]
     #[allow(clippy::wrong_self_convention)]
-    pub fn from_gram<V>(&mut self, gram: Gram<u8>, vocab: &V) -> bool
-    where
-        V: Vocabulary,
-    {
-        let tokens = gram.split_to_tokens();
-        if MAX_ORDER < tokens.len() {
+    pub fn from_gram<V: Vocabulary>(&mut self, gram: V::GramType, vocab: &V) -> bool {
+        let unigrams = gram.to_unigrams();
+        if MAX_ORDER < unigrams.len() {
             return false;
         }
-        for (i, &w) in tokens.iter().enumerate() {
+        self.len = unigrams.len();
+
+        for (i, w) in unigrams.into_iter().enumerate() {
             if let Some(mapped_id) = vocab.get(w) {
                 self.mapped[i] = mapped_id;
             } else {
                 return false;
             }
         }
-        self.len = tokens.len();
-        true
-    }
-
-    #[inline(always)]
-    #[allow(clippy::wrong_self_convention)]
-    pub fn from_tokens<V>(&mut self, tokens: &[&str], vocab: &V) -> bool
-    where
-        V: Vocabulary,
-    {
-        if MAX_ORDER < tokens.len() {
-            return false;
-        }
-        for (i, &w) in tokens.iter().enumerate() {
-            if let Some(mapped_id) = vocab.get(Gram::from_str(w)) {
-                self.mapped[i] = mapped_id;
-            } else {
-                return false;
-            }
-        }
-        self.len = tokens.len();
         true
     }
 
@@ -61,23 +39,20 @@ impl SortedArrayMapper {
 mod tests {
     use super::*;
     use crate::vocabulary::SimpleVocabulary;
+    use crate::WordGram;
 
     #[test]
     fn test_basic() {
-        let grams = vec![
-            Gram::from_str("A"),
-            Gram::from_str("D"),
-            Gram::from_str("B"),
+        let grams = [
+            WordGram::from_str("A"),
+            WordGram::from_str("D"),
+            WordGram::from_str("B"),
         ];
-        let vocab = SimpleVocabulary::build(&grams).unwrap();
+        let vocab = SimpleVocabulary::build(grams).unwrap();
         let mut mapper = SortedArrayMapper::default();
 
-        assert_eq!(mapper.from_gram(Gram::from_str("A B D"), &vocab), true);
+        assert_eq!(mapper.from_gram(WordGram::from_str("A B D"), &vocab), true);
         assert_eq!(mapper.get(), &[0, 2, 1][..]);
-        assert_eq!(mapper.from_gram(Gram::from_str("E B"), &vocab), false);
-
-        assert_eq!(mapper.from_tokens(&["A", "B", "D"], &vocab), true);
-        assert_eq!(mapper.get(), &[0, 2, 1][..]);
-        assert_eq!(mapper.from_tokens(&["E", "B"], &vocab), false);
+        assert_eq!(mapper.from_gram(WordGram::from_str("E B"), &vocab), false);
     }
 }

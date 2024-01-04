@@ -6,7 +6,7 @@ use super::TrieProbLm;
 use crate::loader::GramsLoader;
 use crate::trie_array::TrieArray;
 use crate::vocabulary::Vocabulary;
-use crate::Gram;
+use crate::{Gram, WordGram};
 use crate::MAX_ORDER;
 
 pub struct TrieProbLmBuilder<R, T, V> {
@@ -21,7 +21,7 @@ impl<R, T, V> TrieProbLmBuilder<R, T, V>
 where
     R: Read,
     T: TrieArray,
-    V: Vocabulary,
+    V: Vocabulary<GramType = WordGram>,
 {
     pub fn new(loaders: Vec<Box<dyn GramsLoader<R>>>) -> Result<Self> {
         if MAX_ORDER < loaders.len() {
@@ -63,18 +63,18 @@ where
             records
         };
 
-        let grams: Vec<Gram<u8>> = records.iter().map(|r| r.gram()).collect();
-        self.vocab = V::build(&grams)?;
-
         let mut probs = Vec::with_capacity(records.len());
         let mut backoffs = Vec::with_capacity(records.len());
 
-        for rec in records {
-            probs.push(rec.prob());
-            backoffs.push(rec.backoff());
+        for rec in &records {
+            probs.push(rec.prob);
+            backoffs.push(rec.backoff);
         }
         self.probs.push(probs);
         self.backoffs.push(backoffs);
+
+        let grams: Vec<WordGram> = records.into_iter().map(|r| r.gram).collect();
+        self.vocab = V::build(grams)?;
 
         Ok(())
     }
@@ -100,9 +100,9 @@ where
             // in a BACKWARD trie, 'pattern' is the suffix of 'gram'
             // and 'token' is the first token of 'gram'
             let curr_rec = curr_rec?;
-            let (token, pattern) = curr_rec.gram().pop_front_token().unwrap(); // TODO: Error handling
+            let (token, pattern) = curr_rec.gram.pop_front_token().unwrap(); // TODO: Error handling
 
-            while pattern != prev_rec.gram() {
+            while pattern != prev_rec.gram {
                 // NOTE:
                 // this test is here only to
                 // guarantee termination in
@@ -121,9 +121,9 @@ where
 
             let token_id = self.vocab.get(token).unwrap();
             token_ids.push(token_id);
-            probs.push(curr_rec.prob());
+            probs.push(curr_rec.prob);
             if order < self.max_order() {
-                backoffs.push(curr_rec.backoff());
+                backoffs.push(curr_rec.backoff);
             }
         }
 

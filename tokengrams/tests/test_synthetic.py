@@ -1,4 +1,4 @@
-from tokengrams import Trie
+from tokengrams import WordTrie
 from hypothesis import given, strategies as st
 
 
@@ -9,13 +9,13 @@ from hypothesis import given, strategies as st
         unique_by=lambda x: x[0],
     )
 )
-def test_synthetic(grams: list[tuple[str, int]]):
+def test_word_trie(grams: list[tuple[str, int]]):
     # Construct modified Google n-grams format
     body = "\n".join(f"{k}\t{v}" for k, v in grams)
     text = f"{len(grams)}\n{body}"
 
     # Construct trie
-    trie = Trie.from_texts([text])
+    trie = WordTrie.from_texts([text])
     assert trie.num_grams() == len(grams)
 
     for k, v in grams:

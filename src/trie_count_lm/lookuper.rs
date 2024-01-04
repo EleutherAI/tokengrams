@@ -3,14 +3,9 @@ use crate::rank_array::RankArray;
 use crate::trie_array::TrieArray;
 use crate::trie_count_lm::TrieCountLm;
 use crate::vocabulary::Vocabulary;
-use crate::Gram;
 
 /// Lookuper for [`TrieCountLm`].
 pub struct TrieCountLmLookuper<'a, T, V, A>
-where
-    T: TrieArray,
-    V: Vocabulary,
-    A: RankArray,
 {
     trie: &'a TrieCountLm<T, V, A>,
     mapper: SortedArrayMapper,
@@ -29,29 +24,11 @@ where
             mapper: SortedArrayMapper::default(),
         }
     }
-
+    
     /// Looks up a gram, returning the count.
     #[inline(always)]
-    pub fn with_gram(&mut self, gram: Gram<u8>) -> Option<usize> {
+    pub fn with_gram(&mut self, gram: V::GramType) -> Option<usize> {
         if self.mapper.from_gram(gram, &self.trie.vocab) {
-            self.find()
-        } else {
-            None
-        }
-    }
-
-    /// Looks up a gram in which tokens are sparated by a space, (e.g., `"the same time"`)
-    /// returning the count.
-    #[inline(always)]
-    pub fn with_str(&mut self, gram: &str) -> Option<usize> {
-        self.with_gram(Gram::from_str(gram))
-    }
-
-    /// Looks up a gram formed by a token list, (e.g., `&["the", "same", "time"]`)
-    /// returning the count.
-    #[inline(always)]
-    pub fn with_tokens(&mut self, tokens: &[&str]) -> Option<usize> {
-        if self.mapper.from_tokens(tokens, &self.trie.vocab) {
             self.find()
         } else {
             None

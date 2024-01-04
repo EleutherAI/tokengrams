@@ -3,11 +3,11 @@ use std::io::Read;
 
 use anyhow::{anyhow, Result};
 
+use crate::{Gram, WordGram};
 use crate::loader::GramsLoader;
 use crate::rank_array::RankArray;
 use crate::trie_array::TrieArray;
 use crate::vocabulary::Vocabulary;
-use crate::Gram;
 use crate::TrieCountLm;
 use crate::MAX_ORDER;
 
@@ -20,11 +20,11 @@ pub struct TrieCountLmBuilder<R, T, V, A> {
     counts_builder: CountsBuilder,
 }
 
-impl<R, T, V, A> TrieCountLmBuilder<R, T, V, A>
+impl<'a, R, T, V, A> TrieCountLmBuilder<R, T, V, A>
 where
     R: Read,
     T: TrieArray,
-    V: Vocabulary,
+    V: Vocabulary<GramType = WordGram>,
     A: RankArray,
 {
     /// Creates [`TrieCountLmBuilder`] from loaders.
@@ -63,7 +63,7 @@ where
         for loader in &self.loaders {
             let mut gp = loader.parser()?;
             while let Some(rec) = gp.next_count_record() {
-                self.counts_builder.eat_value(rec?.count());
+                self.counts_builder.eat_value(rec?.count);
             }
             self.counts_builder.build_sequence();
         }
@@ -81,15 +81,15 @@ where
             records
         };
 
-        let grams: Vec<Gram<u8>> = records.iter().map(|r| r.gram()).collect();
-        self.vocab = V::build(&grams)?;
-
         let mut count_ranks = Vec::with_capacity(records.len());
         for rec in &records {
-            let count_rank = self.counts_builder.rank(0, rec.count()).unwrap();
+            let count_rank = self.counts_builder.rank(0, rec.count).unwrap();
             count_ranks.push(count_rank);
         }
         self.count_ranks.push(A::build(count_ranks));
+
+        let grams: Vec<_> = records.into_iter().map(|r| r.gram).collect();
+        self.vocab = V::build(grams)?;
         Ok(())
     }
 
@@ -113,9 +113,9 @@ where
             // in a FORWARD trie, 'pattern' is the predecessor of 'gram'
             // and 'token' is the last token of 'gram'
             let curr_rec = curr_rec?;
-            let (pattern, token) = curr_rec.gram().pop_token().unwrap(); // TODO: Error handling
+            let (pattern, token) = curr_rec.gram.pop_token().unwrap(); // TODO: Error handling
 
-            while pattern != prev_rec.gram() {
+            while pattern != prev_rec.gram {
                 // NOTE:
                 // this test is here only to
                 // guarantee termination in
@@ -133,7 +133,7 @@ where
             pointer += 1;
 
             let token_id = self.vocab.get(token).unwrap();
-            let count_rank = self.counts_builder.rank(order, curr_rec.count()).unwrap();
+            let count_rank = self.counts_builder.rank(order, curr_rec.count).unwrap();
             token_ids.push(token_id);
             count_ranks.push(count_rank);
         }

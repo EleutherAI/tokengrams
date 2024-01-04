@@ -2,6 +2,7 @@ mod builder;
 
 use anyhow::Result;
 
+use crate::gram::WordGram;
 use crate::loader::{GramsLoader, GramsTextLoader};
 use crate::trie_array::TrieArray;
 use crate::vocabulary::Vocabulary;
@@ -20,10 +21,10 @@ pub struct TrieProbLm<T, V> {
     backoffs: Vec<Vec<f32>>, // TODO: Quantize
 }
 
-impl<T, V> TrieProbLm<T, V>
+impl<'a, T, V> TrieProbLm<T, V>
 where
     T: TrieArray,
-    V: Vocabulary,
+    V: Vocabulary<GramType = WordGram>,
 {
     /// Builds the index from *N*-gram models of raw texts (for debug).
     #[doc(hidden)]
@@ -40,7 +41,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Gram, SimpleTrieProbLm};
+    use crate::SimpleTrieProbLm;
 
     use float_cmp::ApproxEq;
 
@@ -78,11 +79,11 @@ D D D\t0.34
     const C: usize = 2;
     const D: usize = 3;
 
-    fn test_vocabulary<V: Vocabulary>(vocab: &V) {
-        assert_eq!(vocab.get(Gram::from_str("A")), Some(A));
-        assert_eq!(vocab.get(Gram::from_str("B")), Some(B));
-        assert_eq!(vocab.get(Gram::from_str("C")), Some(C));
-        assert_eq!(vocab.get(Gram::from_str("D")), Some(D));
+    fn test_vocabulary<V: Vocabulary<GramType = WordGram>>(vocab: &V) {
+        assert_eq!(vocab.get(WordGram::from_str("A")), Some(A));
+        assert_eq!(vocab.get(WordGram::from_str("B")), Some(B));
+        assert_eq!(vocab.get(WordGram::from_str("C")), Some(C));
+        assert_eq!(vocab.get(WordGram::from_str("D")), Some(D));
     }
 
     fn test_unigrams(probs: &[f32], backoffs: &[f32]) {

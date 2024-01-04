@@ -5,7 +5,7 @@ use anyhow::Result;
 
 use crate::loader::{GramsFileLoader, GramsGzFileLoader, GramsLoader};
 use crate::vocabulary::{DoubleArrayVocabulary, Vocabulary};
-use crate::{CountRecord, Gram, GramsFileFormats};
+use crate::{CountRecord, WordGram, GramsFileFormats};
 
 /// Loads all of [`CountRecord`] from a file.
 ///
@@ -13,7 +13,7 @@ use crate::{CountRecord, Gram, GramsFileFormats};
 ///
 ///  - `filepath`: *N*-gram counts file.
 ///  - `fmt`: File format.
-pub fn load_records_from_file<P>(filepath: P, fmt: GramsFileFormats) -> Result<Vec<CountRecord>>
+pub fn load_records_from_file<P>(filepath: P, fmt: GramsFileFormats) -> Result<Vec<CountRecord<WordGram>>>
 where
     P: AsRef<Path>,
 {
@@ -30,7 +30,7 @@ where
 }
 
 /// Loads all of [`CountRecord`] from a gram-count file.
-fn load_records<R: Read>(loader: Box<dyn GramsLoader<R>>) -> Result<Vec<CountRecord>>
+fn load_records<R: Read>(loader: Box<dyn GramsLoader<R>>) -> Result<Vec<CountRecord<WordGram>>>
 where
     R: Read,
 {
@@ -57,8 +57,8 @@ where
     P: AsRef<Path>,
 {
     let records = load_records_from_file(filepath, fmt)?;
-    let grams: Vec<Gram<u8>> = records.iter().map(|r| r.gram()).collect();
-    let vocab = DoubleArrayVocabulary::build(&grams)?;
+    let grams: Vec<_> = records.into_iter().map(|r| r.gram).collect();
+    let vocab = DoubleArrayVocabulary::build(grams)?;
     Ok(vocab)
 }
 
