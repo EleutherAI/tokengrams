@@ -1,0 +1,11 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "tokengrams"
+version = "0.1.0"
+description = "Highly efficient computation and storage of token n-grams for massive corpora."
+dependencies = [
+    "tokenizers",
+]

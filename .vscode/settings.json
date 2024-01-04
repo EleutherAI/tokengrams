@@ -1,5 +1,10 @@
 {
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml"
-    ]
+    ],
+    "python.testing.pytestArgs": [
+        "tokengrams/tests"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
 }

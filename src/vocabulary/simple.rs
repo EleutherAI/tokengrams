@@ -23,7 +23,7 @@ impl Vocabulary for SimpleVocabulary {
         let mut map = HashMap::new();
         for (id, token) in tokens.iter().enumerate() {
             if let Some(v) = map.insert(token.to_string(), id) {
-                return Err(anyhow!("Depulicated key: {:?} => {}", token, v));
+                return Err(anyhow!("Duplicated key: {:?} => {}", token, v));
             }
         }
         Ok(Self { map })

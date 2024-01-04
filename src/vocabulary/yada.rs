@@ -34,7 +34,7 @@ impl Vocabulary for DoubleArrayVocabulary {
         for i in 1..keyset.len() {
             if keyset[i - 1].0 == keyset[i].0 {
                 let (k, v) = keyset[i - 1];
-                return Err(anyhow!("Depulicated key: {:?} => {}", k, v));
+                return Err(anyhow!("Duplicated key: {:?} => {}", k, v));
             }
         }
 
