@@ -1,1 +1,8 @@
-from .tokengrams import WordTrie
+from .tokengrams import (
+    BigramCounter,
+    TrigramCounter,
+    FourgramCounter,
+    FivegramCounter,
+    SixgramCounter,
+    WordTrie
+)
