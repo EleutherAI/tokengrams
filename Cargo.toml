@@ -20,8 +20,6 @@ clap = { version = "4.4.11", features = ["derive"] }
 flate2 = "1.0"
 float-cmp = "0.9.0"
 indicatif = "0.17.7"
-memmap2 = "0.9.3"
-num-traits = "0.2.17"
 pyo3 = { version = "0.20.1", features = ["anyhow", "extension-module"] }
 rayon = "1.8.0"
 serde = "1.0.194"
