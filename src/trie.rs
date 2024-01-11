@@ -7,13 +7,13 @@ use crate::WordGram;
 use crate::gram::{Gram, TokenGram};
 use crate::loader::{GramsFileFormats, GramsLoader, GramsTextLoader};
 use crate::trie_array::EliasFanoTrieArray;
-use crate::trie_count_lm::{TrieCountLm, TrieCountLmBuilder, TrieCountLmLookuper};
+use crate::trie_lm::{TrieLm, TrieLmBuilder, TrieLmLookuper};
 use crate::rank_array::EliasFanoRankArray;
 use crate::vocabulary::{DoubleArrayVocabulary, IdentityVocabulary};
 
-pub type TokenTrieLm = TrieCountLm<EliasFanoTrieArray, IdentityVocabulary, EliasFanoRankArray>;
+pub type TokenTrieLm = TrieLm<EliasFanoTrieArray, IdentityVocabulary, EliasFanoRankArray>;
 pub type WordTrieLm =
-    TrieCountLm<EliasFanoTrieArray, DoubleArrayVocabulary, EliasFanoRankArray>;
+    TrieLm<EliasFanoTrieArray, DoubleArrayVocabulary, EliasFanoRankArray>;
 
 
 #[pyclass(frozen)]
@@ -31,7 +31,7 @@ impl TokenTrie {
     }
 
     pub fn find(&self, gram: Vec<u16>) -> Option<usize> {
-        let mut lookuper = TrieCountLmLookuper::new(&self.trie);
+        let mut lookuper = TrieLmLookuper::new(&self.trie);
         lookuper.with_gram(TokenGram::new(gram))
     }
 
@@ -86,12 +86,12 @@ impl WordTrie {
             loaders.push(loader);
         }
         Ok(Self {
-            trie: TrieCountLmBuilder::new(loaders)?.build()?,
+            trie: TrieLmBuilder::new(loaders)?.build()?,
         })
     }
 
     pub fn find(&self, gram: &str) -> Option<usize> {
-        let mut lookuper = TrieCountLmLookuper::new(&self.trie);
+        let mut lookuper = TrieLmLookuper::new(&self.trie);
         lookuper.with_gram(WordGram::from_str(gram))
     }
 

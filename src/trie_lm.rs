@@ -14,19 +14,19 @@ use crate::trie_array::TrieArray;
 use crate::vocabulary::Vocabulary;
 use crate::GramsFileFormats;
 
-pub use crate::trie_count_lm::builder::TrieCountLmBuilder;
-pub use crate::trie_count_lm::lookuper::TrieCountLmLookuper;
+pub use crate::trie_lm::builder::TrieLmBuilder;
+pub use crate::trie_lm::lookuper::TrieLmLookuper;
 
 /// Elias-Fano trie for indexing *N*-grams with their frequency counts.
 #[derive(Default, Debug)]
-pub struct TrieCountLm<T, V, A> {
+pub struct TrieLm<T, V, A> {
     vocab: V,
     arrays: Vec<T>,
     count_ranks: Vec<A>,
     counts: Vec<sucds::CompactVector>,
 }
 
-impl<T, V, A> TrieCountLm<T, V, A>
+impl<T, V, A> TrieLm<T, V, A>
 where
     T: TrieArray,
     V: Vocabulary<GramType = WordGram>,
@@ -62,7 +62,7 @@ where
             let loader: Box<dyn GramsLoader<_>> = Box::new(GramsFileLoader::new(filepath));
             loaders.push(loader);
         }
-        TrieCountLmBuilder::new(loaders)?.build()
+        TrieLmBuilder::new(loaders)?.build()
     }
 
     /// Builds the index from *N*-gram counts files in a gzip compressed format.
@@ -79,7 +79,7 @@ where
             let loader: Box<dyn GramsLoader<_>> = Box::new(GramsGzFileLoader::new(filepath));
             loaders.push(loader);
         }
-        TrieCountLmBuilder::new(loaders)?.build()
+        TrieLmBuilder::new(loaders)?.build()
     }
 
     /// Builds the index from *N*-gram counts of raw texts (for debug).
@@ -90,12 +90,12 @@ where
             let loader: Box<dyn GramsLoader<_>> = Box::new(GramsTextLoader::new(text.as_bytes()));
             loaders.push(loader);
         }
-        TrieCountLmBuilder::new(loaders)?.build()
+        TrieLmBuilder::new(loaders)?.build()
     }
 }
 
 // Methods which work for TokenGram as well as WordGram.
-impl<T, V, A> TrieCountLm<T, V, A>
+impl<T, V, A> TrieLm<T, V, A>
 where
     T: TrieArray,
     V: Vocabulary,
@@ -221,8 +221,8 @@ where
     }
 
     /// Makes the lookuper.
-    pub fn lookuper(&self) -> TrieCountLmLookuper<T, V, A> {
-        TrieCountLmLookuper::new(self)
+    pub fn lookuper(&self) -> TrieLmLookuper<T, V, A> {
+        TrieLmLookuper::new(self)
     }
 
     /// Gets the maximum of *N*.
@@ -239,7 +239,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{WordTrieLm, WordGram, SimpleTrieCountLm};
+    use crate::{WordTrieLm, WordGram, SimpleTrieLm};
 
     const GRAMS_1: &'static str = "4
 A\t10
@@ -327,7 +327,7 @@ D D D\t1
 
     #[test]
     fn test_simple_components() {
-        let lm = SimpleTrieCountLm::from_texts(vec![GRAMS_1, GRAMS_2, GRAMS_3]).unwrap();
+        let lm = SimpleTrieLm::from_texts(vec![GRAMS_1, GRAMS_2, GRAMS_3]).unwrap();
         test_vocabulary(&lm.vocab);
         test_unigrams(&lm.count_ranks[0]);
         test_bigrams(&lm.arrays[0], &lm.count_ranks[1]);
@@ -345,26 +345,26 @@ D D D\t1
 
     #[test]
     fn test_simple_lookup() {
-        let lm = SimpleTrieCountLm::from_texts(vec![GRAMS_1, GRAMS_2, GRAMS_3]).unwrap();
+        let lm = SimpleTrieLm::from_texts(vec![GRAMS_1, GRAMS_2, GRAMS_3]).unwrap();
         let mut lookuper = lm.lookuper();
 
         let loader = GramsTextLoader::new(GRAMS_1.as_bytes());
         let mut gp = loader.parser().unwrap();
-        while let Some(rec) = gp.next_count_record() {
+        while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_2.as_bytes());
         let mut gp = loader.parser().unwrap();
-        while let Some(rec) = gp.next_count_record() {
+        while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_3.as_bytes());
         let mut gp = loader.parser().unwrap();
-        while let Some(rec) = gp.next_count_record() {
+        while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
@@ -381,21 +381,21 @@ D D D\t1
 
         let loader = GramsTextLoader::new(GRAMS_1.as_bytes());
         let mut gp = loader.parser().unwrap();
-        while let Some(rec) = gp.next_count_record() {
+        while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_2.as_bytes());
         let mut gp = loader.parser().unwrap();
-        while let Some(rec) = gp.next_count_record() {
+        while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_3.as_bytes());
         let mut gp = loader.parser().unwrap();
-        while let Some(rec) = gp.next_count_record() {
+        while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }

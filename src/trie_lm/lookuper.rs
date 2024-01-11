@@ -1,25 +1,25 @@
 use crate::mappers::SortedArrayMapper;
 use crate::rank_array::RankArray;
 use crate::trie_array::TrieArray;
-use crate::trie_count_lm::TrieCountLm;
+use crate::trie_lm::TrieLm;
 use crate::vocabulary::Vocabulary;
 
-/// Lookuper for [`TrieCountLm`].
-pub struct TrieCountLmLookuper<'a, T, V, A>
+/// Lookuper for [`TrieLm`].
+pub struct TrieLmLookuper<'a, T, V, A>
 {
-    trie: &'a TrieCountLm<T, V, A>,
+    trie: &'a TrieLm<T, V, A>,
     mapper: SortedArrayMapper,
 }
 
-impl<'a, T, V, A> TrieCountLmLookuper<'a, T, V, A>
+impl<'a, T, V, A> TrieLmLookuper<'a, T, V, A>
 where
     T: TrieArray,
     V: Vocabulary,
     A: RankArray,
 {
-    /// Creates [`TrieCountLmLookuper`] from [`TrieCountLm`].
-    pub fn new(trie: &'a TrieCountLm<T, V, A>) -> TrieCountLmLookuper<'a, T, V, A> {
-        TrieCountLmLookuper {
+    /// Creates [`TrieLmLookuper`] from [`TrieLm`].
+    pub fn new(trie: &'a TrieLm<T, V, A>) -> TrieLmLookuper<'a, T, V, A> {
+        TrieLmLookuper {
             trie,
             mapper: SortedArrayMapper::default(),
         }

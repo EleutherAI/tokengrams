@@ -8,11 +8,11 @@ use crate::loader::GramsLoader;
 use crate::rank_array::RankArray;
 use crate::trie_array::TrieArray;
 use crate::vocabulary::Vocabulary;
-use crate::TrieCountLm;
+use crate::TrieLm;
 use crate::MAX_ORDER;
 
-/// Builder for [`TrieCountLm`].
-pub struct TrieCountLmBuilder<R, T, V, A> {
+/// Builder for [`TrieLm`].
+pub struct TrieLmBuilder<R, T, V, A> {
     loaders: Vec<Box<dyn GramsLoader<R>>>,
     vocab: V,
     arrays: Vec<T>,
@@ -20,14 +20,14 @@ pub struct TrieCountLmBuilder<R, T, V, A> {
     counts_builder: CountsBuilder,
 }
 
-impl<'a, R, T, V, A> TrieCountLmBuilder<R, T, V, A>
+impl<'a, R, T, V, A> TrieLmBuilder<R, T, V, A>
 where
     R: Read,
     T: TrieArray,
     V: Vocabulary<GramType = WordGram>,
     A: RankArray,
 {
-    /// Creates [`TrieCountLmBuilder`] from loaders.
+    /// Creates [`TrieLmBuilder`] from loaders.
     pub fn new(loaders: Vec<Box<dyn GramsLoader<R>>>) -> Result<Self> {
         if MAX_ORDER < loaders.len() {
             return Err(anyhow!("loaders.len() must be no more than {}", MAX_ORDER));
@@ -41,8 +41,8 @@ where
         })
     }
 
-    /// Builds [`TrieCountLm`].
-    pub fn build(mut self) -> Result<TrieCountLm<T, V, A>> {
+    /// Builds [`TrieLm`].
+    pub fn build(mut self) -> Result<TrieLm<T, V, A>> {
         self.build_counts()?;
         self.build_vocabulary()?;
 
@@ -51,7 +51,7 @@ where
             self.build_sorted_array(order)?;
         }
 
-        Ok(TrieCountLm {
+        Ok(TrieLm {
             vocab: self.vocab,
             arrays: self.arrays,
             count_ranks: self.count_ranks,
@@ -62,7 +62,7 @@ where
     fn build_counts(&mut self) -> Result<()> {
         for loader in &self.loaders {
             let mut gp = loader.parser()?;
-            while let Some(rec) = gp.next_count_record() {
+            while let Some(rec) = gp.next_record() {
                 self.counts_builder.eat_value(rec?.count);
             }
             self.counts_builder.build_sequence();
@@ -74,7 +74,7 @@ where
         let records = {
             let mut gp = self.loaders[0].parser()?;
             let mut records = Vec::new();
-            while let Some(rec) = gp.next_count_record() {
+            while let Some(rec) = gp.next_record() {
                 let rec = rec?;
                 records.push(rec);
             }
@@ -106,9 +106,9 @@ where
         pointers.push(0);
 
         let mut pointer = 0;
-        let mut prev_rec = prev_gp.next_count_record().unwrap()?;
+        let mut prev_rec = prev_gp.next_record().unwrap()?;
 
-        while let Some(curr_rec) = curr_gp.next_count_record() {
+        while let Some(curr_rec) = curr_gp.next_record() {
             // NOTE:
             // in a FORWARD trie, 'pattern' is the predecessor of 'gram'
             // and 'token' is the last token of 'gram'
@@ -123,7 +123,7 @@ where
                 // 'pattern' should ALWAYS
                 // be found within previous order grams
                 pointers.push(pointer);
-                if let Some(rec) = prev_gp.next_count_record() {
+                if let Some(rec) = prev_gp.next_record() {
                     prev_rec = rec?;
                 } else {
                     return Err(anyhow!("{}-grams data is incomplete.", order + 1));
@@ -138,7 +138,7 @@ where
             count_ranks.push(count_rank);
         }
 
-        while prev_gp.next_count_record().is_some() {
+        while prev_gp.next_record().is_some() {
             pointers.push(pointer);
         }
         pointers.push(pointer);

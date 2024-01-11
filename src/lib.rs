@@ -4,9 +4,7 @@ pub mod loader;
 pub mod parser;
 pub mod record;
 pub mod trie;
-pub mod trie_count_lm;
-pub mod trie_prob_lm;
-//pub mod typed_mmap;
+pub mod trie_lm;
 pub mod util;
 pub mod vocabulary;
 
@@ -25,9 +23,8 @@ pub const GRAM_COUNT_SEPARATOR: u8 = b'\t';
 
 pub use gram_counter::{GramCounter, BigramCounter, TrigramCounter, FourgramCounter, FivegramCounter, SixgramCounter};
 pub use gram::{Gram, WordGram};
-pub use record::{CountRecord, ProbRecord};
-pub use trie_count_lm::{TrieCountLm, TrieCountLmBuilder, TrieCountLmLookuper};
-pub use trie_prob_lm::TrieProbLm;
+pub use record::CountRecord;
+pub use trie_lm::{TrieLm, TrieLmBuilder, TrieLmLookuper};
 pub use trie::{TokenTrie, TokenTrieLm, WordTrie, WordTrieLm};
 
 pub use loader::{GramsFileFormats, GramsLoader, GramsTextLoader};
@@ -37,11 +34,9 @@ pub use rank_array::{EliasFanoRankArray, RankArray, SimpleRankArray};
 pub use trie_array::{EliasFanoTrieArray, SimpleTrieArray, TrieArray};
 pub use vocabulary::{DoubleArrayVocabulary, IdentityVocabulary, SimpleVocabulary, Vocabulary};
 
-/// Simple implementation of [`TrieCountLm`].
+/// Simple implementation of [`TrieLm`].
 /// Note that this is for debug, and do NOT use it for storing massive datasets.
-pub type SimpleTrieCountLm = TrieCountLm<SimpleTrieArray, SimpleVocabulary, SimpleRankArray>;
-
-pub type SimpleTrieProbLm = TrieProbLm<SimpleTrieArray, SimpleVocabulary>;
+pub type SimpleTrieLm = TrieLm<SimpleTrieArray, SimpleVocabulary, SimpleRankArray>;
 
 
 /// Python bindings

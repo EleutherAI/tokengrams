@@ -36,7 +36,7 @@ where
 {
     let mut gp = loader.parser()?;
     let mut records = Vec::new();
-    while let Some(rec) = gp.next_count_record() {
+    while let Some(rec) = gp.next_record() {
         let rec = rec?;
         records.push(rec);
     }
