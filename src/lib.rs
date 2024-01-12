@@ -1,8 +1,9 @@
-pub mod gram_counter;
 pub mod gram;
+pub mod gram_counter;
 pub mod loader;
 pub mod parser;
 pub mod record;
+pub mod sucds_glue;
 pub mod trie;
 pub mod trie_lm;
 pub mod util;
@@ -19,15 +20,15 @@ pub const TOKEN_SEPARATOR: u8 = b' ';
 /// The separator for grams and count.
 pub const GRAM_COUNT_SEPARATOR: u8 = b'\t';
 
-//pub use typed_mmap::TypedMmap;
-
-pub use gram_counter::{GramCounter, BigramCounter, TrigramCounter, FourgramCounter, FivegramCounter, SixgramCounter};
 pub use gram::{Gram, WordGram};
+pub use gram_counter::{
+    BigramCounter, FivegramCounter, FourgramCounter, GramCounter, SixgramCounter, TrigramCounter,
+};
 pub use record::CountRecord;
-pub use trie_lm::{TrieLm, TrieLmBuilder, TrieLmLookuper};
 pub use trie::{TokenTrie, TokenTrieLm, WordTrie, WordTrieLm};
+pub use trie_lm::{TrieLm, TrieLmBuilder, TrieLmLookuper};
 
-pub use loader::{GramsFileFormats, GramsLoader, GramsTextLoader};
+pub use loader::{GramSource, GramsFileFormats, GramsTextLoader};
 pub use parser::GramsParser;
 
 pub use rank_array::{EliasFanoRankArray, RankArray, SimpleRankArray};
@@ -37,7 +38,6 @@ pub use vocabulary::{DoubleArrayVocabulary, IdentityVocabulary, SimpleVocabulary
 /// Simple implementation of [`TrieLm`].
 /// Note that this is for debug, and do NOT use it for storing massive datasets.
 pub type SimpleTrieLm = TrieLm<SimpleTrieArray, SimpleVocabulary, SimpleRankArray>;
-
 
 /// Python bindings
 use pyo3::prelude::*;

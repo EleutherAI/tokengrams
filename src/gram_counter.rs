@@ -1,7 +1,7 @@
 use core::fmt::Debug;
+use std::fmt::{Display, Formatter};
 use std::hash::Hash;
 use std::iter::Iterator;
-use std::fmt::{Display, Formatter};
 
 use ahash::AHashMap;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -9,10 +9,13 @@ use pyo3::exceptions::PyValueError;
 use pyo3::ffi::PyErr_CheckSignals;
 use pyo3::prelude::*;
 
-
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
+use crate::gram::TokenGram;
+use crate::loader::GramSource;
+use crate::record::CountRecord;
+use crate::Gram;
 
 /// Counter of N-grams of type T for a fixed N.
 #[derive(Debug, Clone)]
@@ -26,19 +29,20 @@ impl<T: Copy + Eq + Hash, const N: usize> GramCounter<T, N> {
 
     /// Create a new counter.
     pub fn new() -> Self {
-        Self { table: AHashMap::new() }
+        Self {
+            table: AHashMap::new(),
+        }
     }
 
-    /// Get the count of a gram.
-    pub fn count(&self, gram: &[T; N]) -> u32 {
-        self.table.get(gram).copied().unwrap_or(0)
+    /// Get immutable reference to the count of a gram.
+    pub fn get(&self, gram: &[T; N]) -> &u32 {
+        self.table.get(gram).unwrap_or(&0)
     }
 
-    /// Increment the count of a gram by 1.
-    #[inline]
-    pub fn increment(&mut self, gram: [T; N]) {
-        let count = self.table.entry(gram).or_insert(0);
-        *count += 1;
+    /// Get a mutable reference to the count of a gram. Unlike .get(), this will insert
+    /// into the underlying table if the gram is not present.
+    pub fn entry(&mut self, gram: &[T; N]) -> &mut u32 {
+        self.table.entry(*gram).or_insert(0)
     }
 
     /// Iterate over all n-grams and their counts.
@@ -53,8 +57,7 @@ impl<T: Copy + Eq + Hash, const N: usize> GramCounter<T, N> {
 
     pub fn merge(&mut self, other: &Self) {
         for (gram, count) in other.iter() {
-            let entry = self.table.entry(*gram).or_insert(0);
-            *entry += count;
+            *self.entry(gram) += count;
         }
     }
 
@@ -66,7 +69,7 @@ impl<T: Copy + Eq + Hash, const N: usize> GramCounter<T, N> {
             Ok(arr) => arr,
             Err(_) => return, // Do nothing if stream is too short.
         };
-        self.increment(arr);
+        *self.entry(&arr) += 1;
 
         // Count n-grams.
         for x in stream {
@@ -74,19 +77,25 @@ impl<T: Copy + Eq + Hash, const N: usize> GramCounter<T, N> {
             arr.rotate_left(1);
             arr[N - 1] = x;
 
-            self.increment(arr);
+            *self.entry(&arr) += 1;
         }
     }
 
     /// Read a file of raw u16s into the counter.
     pub fn count_file(&mut self, path: &str, max_tokens: Option<u64>) -> std::io::Result<()> {
         let file = File::open(path)?;
-        let total_tokens = std::cmp::min(file.metadata()?.len() / Self::TOKEN_SIZE as u64, max_tokens.unwrap_or(u64::MAX));
+        let total_tokens = std::cmp::min(
+            file.metadata()?.len() / Self::TOKEN_SIZE as u64,
+            max_tokens.unwrap_or(u64::MAX),
+        );
 
         let mut reader = BufReader::new(file);
         let pb = ProgressBar::new(total_tokens);
         pb.set_style(
-            ProgressStyle::with_template("[{elapsed}/{eta}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}").unwrap()
+            ProgressStyle::with_template(
+                "[{elapsed}/{eta}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
+            )
+            .unwrap(),
         );
 
         let mut tokens_processed = 0;
@@ -99,8 +108,9 @@ impl<T: Copy + Eq + Hash, const N: usize> GramCounter<T, N> {
                 break;
             }
             // SAFETY: we used floor division above so we can't read past the end of the buffer
-            let tokens = unsafe { std::slice::from_raw_parts(buffer.as_ptr() as *const T, num_tokens) };
-            self.update_from(tokens.iter().copied());   // TODO: Maybe get rid of the copy here?
+            let tokens =
+                unsafe { std::slice::from_raw_parts(buffer.as_ptr() as *const T, num_tokens) };
+            self.update_from(tokens.iter().copied()); // TODO: Maybe get rid of the copy here?
 
             // All bytes consumed from the buffer
             // should not be read again.
@@ -117,6 +127,37 @@ impl<T: Copy + Eq + Hash, const N: usize> GramCounter<T, N> {
             pb.set_message(msg);
         }
         Ok(())
+    }
+}
+
+pub struct GramCounterIter<'a, T: Copy + Eq + Hash, const N: usize> {
+    iter: std::collections::hash_map::Iter<'a, [T; N], u32>,
+}
+
+impl<'a, T: Copy + Eq + Hash, const N: usize> Iterator for GramCounterIter<'a, T, N> {
+    type Item = anyhow::Result<CountRecord<TokenGram<T>>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (gram, count) = self.iter.next()?;
+        Some(Ok(CountRecord {
+            gram: TokenGram::new(*gram),
+            count: *count as usize,
+        }))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a, T: Copy + Eq + Hash, const N: usize> GramSource for &'a GramCounter<T, N> {
+    type GramType = TokenGram<T>;
+    type Iter = GramCounterIter<'a, T, N>;
+
+    fn iter(&self) -> anyhow::Result<Self::Iter> {
+        Ok(GramCounterIter {
+            iter: self.table.iter(),
+        })
     }
 }
 
@@ -151,22 +192,22 @@ mod tests {
     macro_rules! range_test {
         ($type:ty, $window_size:expr) => {
             let mut counter = GramCounter::<$type, $window_size>::new();
-    
+
             let stream: Vec<_> = (0..=32000).collect();
             counter.update_from(stream.clone().into_iter());
-    
+
             for w in stream.as_slice().windows($window_size) {
                 let arr = w.try_into().unwrap();
-                assert_eq!(counter.count(arr), 1);
+                assert_eq!(*counter.get(arr), 1);
             }
             counter.update_from(stream.clone().into_iter());
-    
+
             for w in stream.as_slice().windows($window_size) {
                 let arr = w.try_into().unwrap();
-                assert_eq!(counter.count(arr), 2);
+                assert_eq!(*counter.get(arr), 2);
             }
         };
-    }    
+    }
 
     #[test]
     fn test_gram_counter() {
@@ -175,7 +216,6 @@ mod tests {
         range_test!(u16, 3);
     }
 }
-
 
 /// Python bindings
 macro_rules! ngram_counter {
@@ -195,13 +235,17 @@ macro_rules! ngram_counter {
             }
 
             pub fn count(&self, gram: Vec<u16>) -> PyResult<u32> {
-                let arr = &gram.try_into().map_err(|_| PyValueError::new_err(format!("gram must be a {}-gram", $size)))?;
-                Ok(self.inner.count(arr))
+                let arr = gram
+                    .try_into()
+                    .map_err(|_| PyValueError::new_err(format!("gram must be a {}-gram", $size)))?;
+                Ok(*self.inner.get(&arr))
             }
 
             pub fn increment(&mut self, gram: Vec<u16>) -> PyResult<()> {
-                let arr = gram.try_into().map_err(|_| PyValueError::new_err(format!("gram must be a {}-gram", $size)))?;
-                self.inner.increment(arr);
+                let arr = gram
+                    .try_into()
+                    .map_err(|_| PyValueError::new_err(format!("gram must be a {}-gram", $size)))?;
+                *self.inner.entry(&arr) += 1;
                 Ok(())
             }
 

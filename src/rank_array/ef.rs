@@ -1,50 +1,30 @@
-use std::io::{Read, Write};
-
 use anyhow::Result;
-use sucds::Searial;
+use serde::{Deserialize, Serialize};
+use sucds::int_vectors::{Access, PrefixSummedEliasFano};
 
 use crate::rank_array::RankArray;
+use crate::sucds_glue;
 
 /// Spece-efficient implementation of [`RankArray`] with Elias-Fano gapped encording.
-#[derive(Default)]
+#[derive(Default, Deserialize, Serialize)]
 pub struct EliasFanoRankArray {
-    count_ranks: sucds::EliasFanoList,
+    #[serde(with = "sucds_glue")]
+    count_ranks: PrefixSummedEliasFano,
 }
 
 impl RankArray for EliasFanoRankArray {
-    fn build(count_ranks: Vec<usize>) -> Self {
-        Self {
-            count_ranks: sucds::EliasFanoList::from_slice(&count_ranks).unwrap(),
-        }
-    }
-
-    fn serialize_into<W>(&self, mut writer: W) -> Result<usize>
+    fn build(count_ranks: Vec<usize>) -> Result<Self>
     where
-        W: Write,
+        Self: Sized,
     {
-        self.count_ranks.serialize_into(&mut writer)
-    }
-
-    fn deserialize_from<R>(mut reader: R) -> Result<Self>
-    where
-        R: Read,
-    {
-        let count_ranks = sucds::EliasFanoList::deserialize_from(&mut reader)?;
-        Ok(Self { count_ranks })
-    }
-
-    fn size_in_bytes(&self) -> usize {
-        self.count_ranks.size_in_bytes()
-    }
-
-    fn memory_statistics(&self) -> serde_json::Value {
-        let count_ranks = self.count_ranks.size_in_bytes();
-        serde_json::json!({ "count_ranks": count_ranks })
+        Ok(Self {
+            count_ranks: PrefixSummedEliasFano::from_slice(&count_ranks)?,
+        })
     }
 
     #[inline(always)]
-    fn get(&self, i: usize) -> usize {
-        self.count_ranks.get(i)
+    fn get(&self, i: usize) -> Option<usize> {
+        self.count_ranks.access(i)
     }
 
     fn len(&self) -> usize {

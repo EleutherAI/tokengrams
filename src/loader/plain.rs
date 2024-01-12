@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::loader::GramsLoader;
+use crate::gram::WordGram;
+use crate::loader::GramSource;
 use crate::parser::GramsParser;
 
 pub struct GramsFileLoader {
@@ -22,8 +23,11 @@ impl GramsFileLoader {
     }
 }
 
-impl GramsLoader<File> for GramsFileLoader {
-    fn parser(&self) -> Result<GramsParser<File>> {
+impl GramSource for GramsFileLoader {
+    type GramType = WordGram;
+    type Iter = GramsParser<File>;
+
+    fn iter(&self) -> Result<GramsParser<File>> {
         let reader = BufReader::new(File::open(&self.filepath)?);
         GramsParser::new(reader)
     }
@@ -39,8 +43,11 @@ impl<'a> GramsTextLoader<'a> {
     }
 }
 
-impl<'a> GramsLoader<&'a [u8]> for GramsTextLoader<'a> {
-    fn parser(&self) -> Result<GramsParser<&'a [u8]>> {
+impl<'a> GramSource for GramsTextLoader<'a> {
+    type GramType = WordGram;
+    type Iter = GramsParser<&'a [u8]>;
+
+    fn iter(&self) -> Result<GramsParser<&'a [u8]>> {
         let reader = BufReader::new(self.text);
         GramsParser::new(reader)
     }

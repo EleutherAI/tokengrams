@@ -1,16 +1,19 @@
 use std::cmp::Ordering;
-use std::io::{Read, Write};
 
-use anyhow::Result;
-use sucds::Searial;
+use serde::{Deserialize, Serialize};
+use sucds::mii_sequences::{EliasFano, EliasFanoBuilder};
 
+use crate::sucds_glue;
 use crate::trie_array::TrieArray;
 
 /// Spece-efficient implementation of [`TrieArray`] with Elias-Fano encording.
-#[derive(Default)]
+#[derive(Default, Deserialize, Serialize)]
 pub struct EliasFanoTrieArray {
-    token_ids: sucds::EliasFano,
-    pointers: sucds::EliasFano,
+    #[serde(with = "sucds_glue")]
+    token_ids: EliasFano,
+
+    #[serde(with = "sucds_glue")]
+    pointers: EliasFano,
 }
 
 impl TrieArray for EliasFanoTrieArray {
@@ -28,68 +31,35 @@ impl TrieArray for EliasFanoTrieArray {
         }
     }
 
-    fn serialize_into<W>(&self, mut writer: W) -> Result<usize>
-    where
-        W: Write,
-    {
-        Ok(self.token_ids.serialize_into(&mut writer)?
-            + self.pointers.serialize_into(&mut writer)?)
-    }
-
-    fn deserialize_from<R>(mut reader: R) -> Result<Self>
-    where
-        R: Read,
-    {
-        let token_ids = sucds::EliasFano::deserialize_from(&mut reader)?;
-        let pointers = sucds::EliasFano::deserialize_from(&mut reader)?;
-        Ok(Self {
-            token_ids,
-            pointers,
-        })
-    }
-
-    fn size_in_bytes(&self) -> usize {
-        self.token_ids.size_in_bytes() + self.pointers.size_in_bytes()
-    }
-
-    fn memory_statistics(&self) -> serde_json::Value {
-        let token_ids = self.token_ids.size_in_bytes();
-        let pointers = self.pointers.size_in_bytes();
-        serde_json::json!({
-            "token_ids": token_ids,
-            "pointers": pointers,
-        })
-    }
-
     /// Gets the token id with a given index.
-    fn token_id(&self, i: usize) -> usize {
-        let pos = self.pointers.rank(i + 1) - 1;
-        let (b, _) = self.range(pos);
+    fn token_id(&self, i: usize) -> Option<usize> {
+        let pos = self.pointers.rank(i + 1)? - 1;
+        let (b, _) = self.range(pos)?;
         let base = if b == 0 {
             0
         } else {
-            self.token_ids.select(b - 1)
+            self.token_ids.select(b - 1)?
         };
-        self.token_ids.select(i) - base
+        Some(self.token_ids.select(i)? - base)
     }
 
     #[inline(always)]
-    fn range(&self, pos: usize) -> (usize, usize) {
-        (self.pointers.select(pos), self.pointers.select(pos + 1))
+    fn range(&self, pos: usize) -> Option<(usize, usize)> {
+        Some((self.pointers.select(pos)?, self.pointers.select(pos + 1)?))
     }
 
     /// Searches for an element within a given range, returning its index.
     /// TODO: Make faster
     #[inline(always)]
     fn find_token(&self, pos: usize, id: usize) -> Option<usize> {
-        let (b, e) = self.range(pos);
+        let (b, e) = self.range(pos)?;
         let base = if b == 0 {
             0
         } else {
-            self.token_ids.select(b - 1)
+            self.token_ids.select(b - 1)?
         };
         for i in b..e {
-            let token_id = self.token_ids.select(i) - base;
+            let token_id = self.token_ids.select(i)? - base;
             match token_id.cmp(&id) {
                 Ordering::Equal => return Some(i),
                 Ordering::Greater => break,
@@ -109,7 +79,7 @@ impl TrieArray for EliasFanoTrieArray {
 }
 
 impl EliasFanoTrieArray {
-    fn build_token_sequence(mut token_ids: Vec<usize>, pointers: &[usize]) -> sucds::EliasFano {
+    fn build_token_sequence(mut token_ids: Vec<usize>, pointers: &[usize]) -> EliasFano {
         assert_eq!(token_ids.len(), *pointers.last().unwrap());
 
         let mut sampled_id = 0;
@@ -125,15 +95,15 @@ impl EliasFanoTrieArray {
             }
         }
 
-        let mut token_efb = sucds::EliasFanoBuilder::new(sampled_id + 1, token_ids.len()).unwrap();
-        token_efb.append(&token_ids).unwrap();
+        let mut token_efb = EliasFanoBuilder::new(sampled_id + 1, token_ids.len()).unwrap();
+        token_efb.extend(token_ids).unwrap();
         token_efb.build()
     }
 
-    fn build_pointers(pointers: Vec<usize>) -> sucds::EliasFano {
+    fn build_pointers(pointers: Vec<usize>) -> EliasFano {
         let mut pointer_efb =
-            sucds::EliasFanoBuilder::new(pointers.last().unwrap() + 1, pointers.len()).unwrap();
-        pointer_efb.append(&pointers).unwrap();
+            EliasFanoBuilder::new(pointers.last().unwrap() + 1, pointers.len()).unwrap();
+        pointer_efb.extend(pointers).unwrap();
         pointer_efb.build().enable_rank()
     }
 }

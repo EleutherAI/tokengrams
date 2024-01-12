@@ -1,34 +1,34 @@
 use std::collections::HashMap;
-use std::io::Read;
 
 use anyhow::{anyhow, Result};
+use sucds::int_vectors::CompactVector;
 
-use crate::{Gram, WordGram};
-use crate::loader::GramsLoader;
+use crate::loader::GramSource;
 use crate::rank_array::RankArray;
 use crate::trie_array::TrieArray;
 use crate::vocabulary::Vocabulary;
+use crate::Gram;
 use crate::TrieLm;
 use crate::MAX_ORDER;
 
 /// Builder for [`TrieLm`].
-pub struct TrieLmBuilder<R, T, V, A> {
-    loaders: Vec<Box<dyn GramsLoader<R>>>,
+pub struct TrieLmBuilder<L, T, V, A> {
+    loaders: Vec<L>,
     vocab: V,
     arrays: Vec<T>,
     count_ranks: Vec<A>,
     counts_builder: CountsBuilder,
 }
 
-impl<'a, R, T, V, A> TrieLmBuilder<R, T, V, A>
+impl<'a, L, T, V, A> TrieLmBuilder<L, T, V, A>
 where
-    R: Read,
+    L: GramSource,
     T: TrieArray,
-    V: Vocabulary<GramType = WordGram>,
+    V: Vocabulary<GramType = L::GramType>,
     A: RankArray,
 {
     /// Creates [`TrieLmBuilder`] from loaders.
-    pub fn new(loaders: Vec<Box<dyn GramsLoader<R>>>) -> Result<Self> {
+    pub fn new(loaders: Vec<L>) -> Result<Self> {
         if MAX_ORDER < loaders.len() {
             return Err(anyhow!("loaders.len() must be no more than {}", MAX_ORDER));
         }
@@ -61,8 +61,8 @@ where
 
     fn build_counts(&mut self) -> Result<()> {
         for loader in &self.loaders {
-            let mut gp = loader.parser()?;
-            while let Some(rec) = gp.next_record() {
+            let gp = loader.iter()?;
+            for rec in gp {
                 self.counts_builder.eat_value(rec?.count);
             }
             self.counts_builder.build_sequence();
@@ -72,9 +72,9 @@ where
 
     fn build_vocabulary(&mut self) -> Result<()> {
         let records = {
-            let mut gp = self.loaders[0].parser()?;
+            let gp = self.loaders[0].iter()?;
             let mut records = Vec::new();
-            while let Some(rec) = gp.next_record() {
+            for rec in gp {
                 let rec = rec?;
                 records.push(rec);
             }
@@ -86,7 +86,7 @@ where
             let count_rank = self.counts_builder.rank(0, rec.count).unwrap();
             count_ranks.push(count_rank);
         }
-        self.count_ranks.push(A::build(count_ranks));
+        self.count_ranks.push(A::build(count_ranks)?);
 
         let grams: Vec<_> = records.into_iter().map(|r| r.gram).collect();
         self.vocab = V::build(grams)?;
@@ -95,20 +95,28 @@ where
 
     /// Builds the sorted array of `order`.
     fn build_sorted_array(&mut self, order: usize) -> Result<()> {
-        let mut prev_gp = self.loaders[order - 1].parser()?;
-        let mut curr_gp = self.loaders[order].parser()?;
+        let mut prev_gp = self.loaders[order - 1].iter()?;
+        let curr_gp = self.loaders[order].iter()?;
 
-        let mut token_ids = Vec::with_capacity(curr_gp.num_grams());
-        let mut count_ranks = Vec::with_capacity(curr_gp.num_grams());
+        // Get number of grams of the current order
+        let (lo, hi) = curr_gp.size_hint();
+        assert_eq!(lo, hi.unwrap());
 
-        let num_pointers = prev_gp.num_grams() + 1;
+        let mut token_ids = Vec::with_capacity(hi.unwrap());
+        let mut count_ranks = Vec::with_capacity(hi.unwrap());
+
+        // Get number of grams of the previous order
+        let (lo, hi) = prev_gp.size_hint();
+        assert_eq!(lo, hi.unwrap());
+
+        let num_pointers = hi.unwrap() + 1;
         let mut pointers = Vec::with_capacity(num_pointers);
         pointers.push(0);
 
         let mut pointer = 0;
-        let mut prev_rec = prev_gp.next_record().unwrap()?;
+        let mut prev_rec = prev_gp.next().unwrap()?;
 
-        while let Some(curr_rec) = curr_gp.next_record() {
+        for curr_rec in curr_gp {
             // NOTE:
             // in a FORWARD trie, 'pattern' is the predecessor of 'gram'
             // and 'token' is the last token of 'gram'
@@ -123,7 +131,7 @@ where
                 // 'pattern' should ALWAYS
                 // be found within previous order grams
                 pointers.push(pointer);
-                if let Some(rec) = prev_gp.next_record() {
+                if let Some(rec) = prev_gp.next() {
                     prev_rec = rec?;
                 } else {
                     return Err(anyhow!("{}-grams data is incomplete.", order + 1));
@@ -138,13 +146,13 @@ where
             count_ranks.push(count_rank);
         }
 
-        while prev_gp.next_record().is_some() {
+        while prev_gp.next().is_some() {
             pointers.push(pointer);
         }
         pointers.push(pointer);
 
         self.arrays.push(T::build(token_ids, pointers));
-        self.count_ranks.push(A::build(count_ranks));
+        self.count_ranks.push(A::build(count_ranks)?);
         Ok(())
     }
 }
@@ -156,12 +164,12 @@ pub struct CountsBuilder {
     // Mappings from eaten values to their ranks
     v2r_maps: Vec<HashMap<usize, usize>>,
     // In which values are sorted in decreasing order of their frequencies
-    sorted_sequences: Vec<sucds::CompactVector>,
+    sorted_sequences: Vec<CompactVector>,
 }
 
 impl CountsBuilder {
     #[allow(clippy::missing_const_for_fn)]
-    pub fn release(self) -> Vec<sucds::CompactVector> {
+    pub fn release(self) -> Vec<CompactVector> {
         self.sorted_sequences
     }
 
@@ -177,7 +185,7 @@ impl CountsBuilder {
     pub fn build_sequence(&mut self) {
         if self.v2f_map.is_empty() {
             self.v2r_maps.push(HashMap::new());
-            self.sorted_sequences.push(sucds::CompactVector::default());
+            self.sorted_sequences.push(CompactVector::default());
             return;
         }
 
@@ -193,9 +201,13 @@ impl CountsBuilder {
         // `then_with` is needed to stably sort
         sorted.sort_by(|(v1, f1), (v2, f2)| f2.cmp(f1).then_with(|| v1.cmp(v2)));
 
+        // TODO: maybe don't unwrap here?
         let mut values =
-            sucds::CompactVector::with_capacity(sorted.len(), sucds::util::needed_bits(max_value));
-        sorted.iter().for_each(|&(v, _)| values.push(v));
+            CompactVector::with_capacity(sorted.len(), sucds::utils::needed_bits(max_value))
+                .unwrap();
+        sorted
+            .iter()
+            .for_each(|&(v, _)| values.push_int(v).unwrap());
         self.sorted_sequences.push(values);
 
         let mut v2r_map = HashMap::new();
@@ -234,10 +246,10 @@ mod tests {
         assert_eq!(scb.rank(1, 2), Some(1));
 
         let counts = scb.release();
-        assert_eq!(counts[0].get(0), 2);
-        assert_eq!(counts[0].get(1), 1);
-        assert_eq!(counts[0].get(2), 4);
-        assert_eq!(counts[1].get(0), 1);
-        assert_eq!(counts[1].get(1), 2);
+        assert_eq!(counts[0].get_int(0), Some(2));
+        assert_eq!(counts[0].get_int(1), Some(1));
+        assert_eq!(counts[0].get_int(2), Some(4));
+        assert_eq!(counts[1].get_int(0), Some(1));
+        assert_eq!(counts[1].get_int(1), Some(2));
     }
 }

@@ -2,11 +2,13 @@ mod identity;
 mod simple;
 mod yada;
 
-use std::io::{Read, Write};
+//use std::io::{Read, Write};
 
 use anyhow::Result;
 
-pub use crate::vocabulary::{identity::IdentityVocabulary, simple::SimpleVocabulary, yada::DoubleArrayVocabulary};
+pub use crate::vocabulary::{
+    identity::IdentityVocabulary, simple::SimpleVocabulary, yada::DoubleArrayVocabulary,
+};
 use crate::Gram;
 
 /// Trait for a data structure for mapping tokens to unique identifiers.
@@ -21,28 +23,14 @@ pub trait Vocabulary {
     where
         Self: Sized;
 
-    /// Serializes the data structure into the writer.
-    fn serialize_into<W: Write>(&self, writer: W) -> Result<usize>;
-
-    /// Deserializes the data structure from the reader.
-    fn deserialize_from<R: Read>(reader: R) -> Result<Self>
-    where
-        Self: Sized;
-
-    /// Gets the number of bytes to serialize the data structure.
-    fn size_in_bytes(&self) -> usize;
-
-    /// Gets breakdowns of memory usages for components.
-    fn memory_statistics(&self) -> serde_json::Value;
-
     /// Looks up a token.
     fn get(&self, token: Self::GramType) -> Option<usize>;
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::WordGram;
     use super::*;
+    use crate::WordGram;
 
     #[test]
     fn test_basic() {

@@ -5,8 +5,7 @@ use crate::trie_lm::TrieLm;
 use crate::vocabulary::Vocabulary;
 
 /// Lookuper for [`TrieLm`].
-pub struct TrieLmLookuper<'a, T, V, A>
-{
+pub struct TrieLmLookuper<'a, T, V, A> {
     trie: &'a TrieLm<T, V, A>,
     mapper: SortedArrayMapper,
 }
@@ -24,7 +23,7 @@ where
             mapper: SortedArrayMapper::default(),
         }
     }
-    
+
     /// Looks up a gram, returning the count.
     #[inline(always)]
     pub fn with_gram(&mut self, gram: V::GramType) -> Option<usize> {
@@ -47,7 +46,7 @@ where
                 return None;
             }
         }
-        let count_rank = self.trie.count_ranks[order].get(pos);
-        Some(self.trie.counts[order].get(count_rank))
+        let count_rank = self.trie.count_ranks[order].get(pos)?;
+        self.trie.counts[order].get_int(count_rank)
     }
 }

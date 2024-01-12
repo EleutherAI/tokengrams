@@ -1,29 +1,32 @@
 mod builder;
 mod lookuper;
 
-use std::io::{Read, Write};
 use std::path::Path;
 
 use anyhow::Result;
-use sucds::{util::IntIO, Searial};
+use serde::{Deserialize, Serialize};
+use sucds::int_vectors::CompactVector;
 
-use crate::WordGram;
-use crate::loader::{GramsFileLoader, GramsGzFileLoader, GramsLoader, GramsTextLoader};
+use crate::loader::{GramsFileLoader, GramsGzFileLoader, GramsTextLoader};
 use crate::rank_array::RankArray;
+use crate::sucds_glue;
 use crate::trie_array::TrieArray;
 use crate::vocabulary::Vocabulary;
 use crate::GramsFileFormats;
+use crate::WordGram;
 
 pub use crate::trie_lm::builder::TrieLmBuilder;
 pub use crate::trie_lm::lookuper::TrieLmLookuper;
 
 /// Elias-Fano trie for indexing *N*-grams with their frequency counts.
-#[derive(Default, Debug)]
+#[derive(Deserialize, Default, Debug, Serialize)]
 pub struct TrieLm<T, V, A> {
     vocab: V,
     arrays: Vec<T>,
     count_ranks: Vec<A>,
-    counts: Vec<sucds::CompactVector>,
+
+    #[serde(with = "sucds_glue")]
+    counts: Vec<CompactVector>,
 }
 
 impl<T, V, A> TrieLm<T, V, A>
@@ -59,7 +62,7 @@ where
     {
         let mut loaders = Vec::with_capacity(filepaths.len());
         for filepath in filepaths {
-            let loader: Box<dyn GramsLoader<_>> = Box::new(GramsFileLoader::new(filepath));
+            let loader = GramsFileLoader::new(filepath);
             loaders.push(loader);
         }
         TrieLmBuilder::new(loaders)?.build()
@@ -76,7 +79,7 @@ where
     {
         let mut loaders = Vec::with_capacity(filepaths.len());
         for filepath in filepaths {
-            let loader: Box<dyn GramsLoader<_>> = Box::new(GramsGzFileLoader::new(filepath));
+            let loader = GramsGzFileLoader::new(filepath);
             loaders.push(loader);
         }
         TrieLmBuilder::new(loaders)?.build()
@@ -87,7 +90,7 @@ where
     pub fn from_texts(texts: Vec<&'static str>) -> Result<Self> {
         let mut loaders = Vec::with_capacity(texts.len());
         for text in texts {
-            let loader: Box<dyn GramsLoader<_>> = Box::new(GramsTextLoader::new(text.as_bytes()));
+            let loader = GramsTextLoader::new(text.as_bytes());
             loaders.push(loader);
         }
         TrieLmBuilder::new(loaders)?.build()
@@ -101,125 +104,6 @@ where
     V: Vocabulary,
     A: RankArray,
 {
-    /// Serializes the index into the writer.
-    pub fn serialize_into<W>(&self, mut writer: W) -> Result<usize>
-    where
-        W: Write,
-    {
-        let mut mem = 0;
-        // vocab
-        mem += self.vocab.serialize_into(&mut writer)?;
-        // arrays
-        mem += self.arrays.len().serialize_into(&mut writer)?;
-        for array in &self.arrays {
-            mem += array.serialize_into(&mut writer)?;
-        }
-        // count_ranks
-        mem += self.count_ranks.len().serialize_into(&mut writer)?;
-        for count_rank in &self.count_ranks {
-            mem += count_rank.serialize_into(&mut writer)?;
-        }
-        // counts
-        mem += self.counts.len().serialize_into(&mut writer)?;
-        for count in &self.counts {
-            mem += count.serialize_into(&mut writer)?;
-        }
-        Ok(mem)
-    }
-
-    /// Deserializes the index from the reader.
-    pub fn deserialize_from<R>(mut reader: R) -> Result<Self>
-    where
-        R: Read,
-    {
-        let vocab = V::deserialize_from(&mut reader)?;
-        let arrays = {
-            let len = usize::deserialize_from(&mut reader)?;
-            let mut arrays = Vec::with_capacity(len);
-            for _ in 0..len {
-                arrays.push(T::deserialize_from(&mut reader)?);
-            }
-            arrays
-        };
-        let count_ranks = {
-            let len = usize::deserialize_from(&mut reader)?;
-            let mut count_ranks = Vec::with_capacity(len);
-            for _ in 0..len {
-                count_ranks.push(A::deserialize_from(&mut reader)?);
-            }
-            count_ranks
-        };
-        let counts = {
-            let len = usize::deserialize_from(&mut reader)?;
-            let mut counts = Vec::with_capacity(len);
-            for _ in 0..len {
-                counts.push(sucds::CompactVector::deserialize_from(&mut reader)?);
-            }
-            counts
-        };
-        Ok(Self {
-            vocab,
-            arrays,
-            count_ranks,
-            counts,
-        })
-    }
-
-    /// Gets the number of bytes to serialize the index.
-    pub fn size_in_bytes(&self) -> usize {
-        let mut mem = 0;
-        // vocab
-        mem += self.vocab.size_in_bytes();
-        // arrays
-        mem += usize::size_in_bytes();
-        for array in &self.arrays {
-            mem += array.size_in_bytes();
-        }
-        // count_ranks
-        mem += usize::size_in_bytes();
-        for count_rank in &self.count_ranks {
-            mem += count_rank.size_in_bytes();
-        }
-        // counts
-        mem += usize::size_in_bytes();
-        for count in &self.counts {
-            mem += count.size_in_bytes();
-        }
-        mem
-    }
-
-    /// Gets breakdowns of memory usages for components.
-    pub fn memory_statistics(&self) -> serde_json::Value {
-        let vocab = self.vocab.memory_statistics();
-        let arrays = {
-            let mut arrays = vec![];
-            for array in &self.arrays {
-                arrays.push(array.memory_statistics());
-            }
-            arrays
-        };
-        let count_ranks = {
-            let mut count_ranks = vec![];
-            for count_rank in &self.count_ranks {
-                count_ranks.push(count_rank.memory_statistics());
-            }
-            count_ranks
-        };
-        let counts = {
-            let mut counts = vec![];
-            for count in &self.counts {
-                counts.push(serde_json::json!({"count": count.size_in_bytes()}));
-            }
-            counts
-        };
-        serde_json::json!({
-            "vocab": vocab,
-            "arrays": arrays,
-            "count_ranks": count_ranks,
-            "counts": counts,
-        })
-    }
-
     /// Makes the lookuper.
     pub fn lookuper(&self) -> TrieLmLookuper<T, V, A> {
         TrieLmLookuper::new(self)
@@ -239,7 +123,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{WordTrieLm, WordGram, SimpleTrieLm};
+    use crate::{GramSource, SimpleTrieLm, WordGram, WordTrieLm};
 
     const GRAMS_1: &'static str = "4
 A\t10
@@ -275,7 +159,7 @@ D D D\t1
     const C: usize = 2;
     const D: usize = 3;
 
-    fn test_vocabulary<V: Vocabulary<GramType = WordGram>>(vocab: &V){
+    fn test_vocabulary<V: Vocabulary<GramType = WordGram>>(vocab: &V) {
         assert_eq!(vocab.get(WordGram::from_str("A")), Some(A));
         assert_eq!(vocab.get(WordGram::from_str("B")), Some(B));
         assert_eq!(vocab.get(WordGram::from_str("C")), Some(C));
@@ -284,25 +168,25 @@ D D D\t1
 
     fn test_unigrams<A: RankArray>(ra: &A) {
         for (i, &count_rank) in [2, 1, 0, 0].iter().enumerate() {
-            assert_eq!(ra.get(i), count_rank);
+            assert_eq!(ra.get(i), Some(count_rank));
         }
     }
 
     fn test_bigrams<T: TrieArray, A: RankArray>(ta: &T, ra: &A) {
         for (i, &token_id) in [A, C, B, C, D, A, D, B, D].iter().enumerate() {
-            assert_eq!(ta.token_id(i), token_id);
+            assert_eq!(ta.token_id(i), Some(token_id));
         }
         for (i, &range) in [(0, 2), (2, 5), (5, 7), (7, 9)].iter().enumerate() {
-            assert_eq!(ta.range(i), range);
+            assert_eq!(ta.range(i), Some(range));
         }
         for (i, &count_rank) in [3, 0, 0, 0, 1, 2, 0, 1, 1].iter().enumerate() {
-            assert_eq!(ra.get(i), count_rank);
+            assert_eq!(ra.get(i), Some(count_rank));
         }
     }
 
     fn test_trigrams<T: TrieArray, A: RankArray>(ta: &T, ra: &A) {
         for (i, &token_id) in [C, C, D, D, B, C, D].iter().enumerate() {
-            assert_eq!(ta.token_id(i), token_id);
+            assert_eq!(ta.token_id(i), Some(token_id));
         }
         for (i, &range) in [
             (0, 1),
@@ -318,10 +202,10 @@ D D D\t1
         .iter()
         .enumerate()
         {
-            assert_eq!(ta.range(i), range);
+            assert_eq!(ta.range(i).unwrap(), range);
         }
         for (i, &count_rank) in [2, 1, 0, 0, 1, 0, 0].iter().enumerate() {
-            assert_eq!(ra.get(i), count_rank);
+            assert_eq!(ra.get(i), Some(count_rank));
         }
     }
 
@@ -349,21 +233,21 @@ D D D\t1
         let mut lookuper = lm.lookuper();
 
         let loader = GramsTextLoader::new(GRAMS_1.as_bytes());
-        let mut gp = loader.parser().unwrap();
+        let mut gp = loader.iter().unwrap();
         while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_2.as_bytes());
-        let mut gp = loader.parser().unwrap();
+        let mut gp = loader.iter().unwrap();
         while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_3.as_bytes());
-        let mut gp = loader.parser().unwrap();
+        let mut gp = loader.iter().unwrap();
         while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
@@ -380,21 +264,21 @@ D D D\t1
         let mut lookuper = lm.lookuper();
 
         let loader = GramsTextLoader::new(GRAMS_1.as_bytes());
-        let mut gp = loader.parser().unwrap();
+        let mut gp = loader.iter().unwrap();
         while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_2.as_bytes());
-        let mut gp = loader.parser().unwrap();
+        let mut gp = loader.iter().unwrap();
         while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
         }
 
         let loader = GramsTextLoader::new(GRAMS_3.as_bytes());
-        let mut gp = loader.parser().unwrap();
+        let mut gp = loader.iter().unwrap();
         while let Some(rec) = gp.next_record() {
             let rec = rec.unwrap();
             assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));

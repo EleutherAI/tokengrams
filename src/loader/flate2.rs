@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use flate2::read::GzDecoder;
 
-use crate::loader::GramsLoader;
+use crate::gram::WordGram;
+use crate::loader::GramSource;
 use crate::parser::GramsParser;
 
 pub struct GramsGzFileLoader {
@@ -23,8 +24,11 @@ impl GramsGzFileLoader {
     }
 }
 
-impl GramsLoader<GzDecoder<File>> for GramsGzFileLoader {
-    fn parser(&self) -> Result<GramsParser<GzDecoder<File>>> {
+impl GramSource for GramsGzFileLoader {
+    type GramType = WordGram;
+    type Iter = GramsParser<GzDecoder<File>>;
+
+    fn iter(&self) -> Result<GramsParser<GzDecoder<File>>> {
         let reader = GzDecoder::new(File::open(&self.filepath)?);
         GramsParser::new(BufReader::new(reader))
     }

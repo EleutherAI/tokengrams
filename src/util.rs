@@ -1,11 +1,10 @@
-use std::io::Read;
 use std::path::Path;
 
 use anyhow::Result;
 
-use crate::loader::{GramsFileLoader, GramsGzFileLoader, GramsLoader};
+use crate::loader::{GramSource, GramsFileLoader, GramsGzFileLoader};
 use crate::vocabulary::{DoubleArrayVocabulary, Vocabulary};
-use crate::{CountRecord, WordGram, GramsFileFormats};
+use crate::{CountRecord, GramsFileFormats, WordGram};
 
 /// Loads all of [`CountRecord`] from a file.
 ///
@@ -13,30 +12,30 @@ use crate::{CountRecord, WordGram, GramsFileFormats};
 ///
 ///  - `filepath`: *N*-gram counts file.
 ///  - `fmt`: File format.
-pub fn load_records_from_file<P>(filepath: P, fmt: GramsFileFormats) -> Result<Vec<CountRecord<WordGram>>>
+pub fn load_records_from_file<P>(
+    filepath: P,
+    fmt: GramsFileFormats,
+) -> Result<Vec<CountRecord<WordGram>>>
 where
     P: AsRef<Path>,
 {
     match fmt {
         GramsFileFormats::Plain => {
-            let loader: Box<dyn GramsLoader<_>> = Box::new(GramsFileLoader::new(filepath));
+            let loader = GramsFileLoader::new(filepath);
             load_records(loader)
         }
         GramsFileFormats::Gzip => {
-            let loader: Box<dyn GramsLoader<_>> = Box::new(GramsGzFileLoader::new(filepath));
+            let loader = GramsGzFileLoader::new(filepath);
             load_records(loader)
         }
     }
 }
 
 /// Loads all of [`CountRecord`] from a gram-count file.
-fn load_records<R: Read>(loader: Box<dyn GramsLoader<R>>) -> Result<Vec<CountRecord<WordGram>>>
-where
-    R: Read,
-{
-    let mut gp = loader.parser()?;
+fn load_records<L: GramSource>(loader: L) -> Result<Vec<CountRecord<L::GramType>>> {
+    let gp = loader.iter()?;
     let mut records = Vec::new();
-    while let Some(rec) = gp.next_record() {
+    for rec in gp {
         let rec = rec?;
         records.push(rec);
     }

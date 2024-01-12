@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 use std::io::{BufRead, BufReader, Read};
 
-use crate::{GRAM_COUNT_SEPARATOR, Gram, WordGram};
 use crate::CountRecord;
+use crate::{Gram, WordGram, GRAM_COUNT_SEPARATOR};
 
 /// Parser for a *N*-gram file of counts.
 /// TODO: Add example of the format.
@@ -59,6 +59,19 @@ where
             |_| Some(Err(anyhow!("Parse error, {:?}", items))),
             |count| Some(Ok(CountRecord { gram, count })),
         )
+    }
+}
+
+impl<R: Read> Iterator for GramsParser<R> {
+    type Item = Result<CountRecord<WordGram>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_record()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.num_grams - self.num_parsed;
+        (remaining, Some(remaining))
     }
 }
 

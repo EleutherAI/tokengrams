@@ -41,7 +41,14 @@ impl<C: Clone + Copy + Eq> Gram for TokenGram<C> {
     fn pop_token(&self) -> Option<(Self, Self)> {
         let idx = self.data.len() - 1;
         if idx > 0 {
-            Some((Self { data: self.data[..idx].into() }, Self { data: self.data[idx..].into() }))
+            Some((
+                Self {
+                    data: self.data[..idx].into(),
+                },
+                Self {
+                    data: self.data[idx..].into(),
+                },
+            ))
         } else {
             None
         }
@@ -67,7 +74,7 @@ impl<C: Clone + Copy + Eq> Gram for TokenGram<C> {
     #[inline(always)]
     fn pop_front_token(&self) -> Option<(Self, Self)> {
         let (left, right) = self.data.split_at(1);
-        
+
         if !right.is_empty() {
             Some((Self { data: left.into() }, Self { data: right.into() }))
         } else {

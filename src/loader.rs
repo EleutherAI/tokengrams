@@ -1,23 +1,23 @@
 mod flate2;
 mod plain;
 
-use std::io::Read;
 use std::str::FromStr;
 
 use anyhow::Result;
 
-use crate::parser::GramsParser;
+use crate::gram::Gram;
+use crate::record::CountRecord;
 
 pub use crate::loader::flate2::GramsGzFileLoader;
 pub use crate::loader::plain::{GramsFileLoader, GramsTextLoader};
 
 /// Loader for a *N*-gram counts file.
-pub trait GramsLoader<R>
-where
-    R: Read,
-{
-    /// Creates [`GramsParser`].
-    fn parser(&self) -> Result<GramsParser<R>>;
+pub trait GramSource {
+    type GramType: Gram;
+    type Iter: Iterator<Item = Result<CountRecord<Self::GramType>>>;
+
+    /// Returns an iterator over fallible CountRecords for the GramType.
+    fn iter(&self) -> Result<Self::Iter>;
 }
 
 /// File formats supported.

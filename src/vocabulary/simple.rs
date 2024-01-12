@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::io::{Read, Write};
 
 use anyhow::{anyhow, Result};
 
@@ -31,38 +30,7 @@ impl Vocabulary for SimpleVocabulary {
         Ok(Self { map })
     }
 
-    fn serialize_into<W>(&self, writer: W) -> Result<usize>
-    where
-        W: Write,
-    {
-        bincode::serialize_into(writer, &self.map).map_err(handle_bincode_error)?;
-        Ok(self.size_in_bytes())
-    }
-
-    fn deserialize_from<R>(reader: R) -> Result<Self>
-    where
-        R: Read,
-    {
-        let map = bincode::deserialize_from(reader).map_err(handle_bincode_error)?;
-        Ok(Self { map })
-    }
-
-    fn size_in_bytes(&self) -> usize {
-        bincode::serialize(&self.map)
-            .map_err(handle_bincode_error)
-            .unwrap()
-            .len()
-    }
-
-    fn memory_statistics(&self) -> serde_json::Value {
-        serde_json::json!({})
-    }
-
     fn get(&self, token: Self::GramType) -> Option<usize> {
         self.map.get(&token.to_string()).copied()
     }
-}
-
-fn handle_bincode_error(e: std::boxed::Box<bincode::ErrorKind>) -> anyhow::Error {
-    anyhow::anyhow!("{:?}", e)
 }

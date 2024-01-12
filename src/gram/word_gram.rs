@@ -110,7 +110,9 @@ impl WordGram {
     /// Creates a [`WordGram`] from a string slice.
     #[inline]
     pub fn from_str(s: &str) -> Self {
-        Self { data: s.as_bytes().into() }
+        Self {
+            data: s.as_bytes().into(),
+        }
     }
 }
 

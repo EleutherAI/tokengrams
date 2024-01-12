@@ -1,10 +1,6 @@
 mod ef;
 mod simple;
 
-use std::io::{Read, Write};
-
-use anyhow::Result;
-
 pub use crate::trie_array::ef::EliasFanoTrieArray;
 pub use crate::trie_array::simple::SimpleTrieArray;
 
@@ -13,25 +9,11 @@ pub trait TrieArray {
     /// Builds a [`TrieArray`] from sequences of token ids and pointers.
     fn build(token_ids: Vec<usize>, pointers: Vec<usize>) -> Self;
 
-    /// Serializes the data structure into the writer.
-    fn serialize_into<W: Write>(&self, writer: W) -> Result<usize>;
-
-    /// Deserializes the data structure from the reader.
-    fn deserialize_from<R: Read>(reader: R) -> Result<Self>
-    where
-        Self: Sized;
-
-    /// Gets the number of bytes to serialize the data structure.
-    fn size_in_bytes(&self) -> usize;
-
-    /// Gets breakdowns of memory usages for components.
-    fn memory_statistics(&self) -> serde_json::Value;
-
     /// Gets the `i`-th token id.
-    fn token_id(&self, i: usize) -> usize;
+    fn token_id(&self, i: usize) -> Option<usize>;
 
     /// Gets the range `pointers[pos]..pointers[pos+1]`.
-    fn range(&self, pos: usize) -> (usize, usize);
+    fn range(&self, pos: usize) -> Option<(usize, usize)>;
 
     /// Finds the position `i` such that `token_id(i) = id` and `i in range(pos)`.
     fn find_token(&self, pos: usize, id: usize) -> Option<usize>;
@@ -53,10 +35,10 @@ mod tests {
         let ta = T::build(token_ids.clone(), pointers.clone());
 
         for (i, &x) in token_ids.iter().enumerate() {
-            assert_eq!(ta.token_id(i), x);
+            assert_eq!(ta.token_id(i).unwrap(), x);
         }
         for i in 0..pointers.len() - 1 {
-            assert_eq!(ta.range(i), (pointers[i], pointers[i + 1]));
+            assert_eq!(ta.range(i).unwrap(), (pointers[i], pointers[i + 1]));
         }
 
         assert_eq!(ta.find_token(1, 3), Some(4));
@@ -73,10 +55,10 @@ mod tests {
         let ta = T::build(token_ids.clone(), pointers.clone());
 
         for (i, &x) in token_ids.iter().enumerate() {
-            assert_eq!(ta.token_id(i), x);
+            assert_eq!(ta.token_id(i).unwrap(), x);
         }
         for i in 0..pointers.len() - 1 {
-            assert_eq!(ta.range(i), (pointers[i], pointers[i + 1]));
+            assert_eq!(ta.range(i).unwrap(), (pointers[i], pointers[i + 1]));
         }
 
         assert_eq!(ta.find_token(2, 2), Some(1));
