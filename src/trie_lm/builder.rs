@@ -1,31 +1,27 @@
-use std::collections::HashMap;
-
+use ahash::AHashMap as HashMap;
 use anyhow::{anyhow, Result};
-use sucds::int_vectors::CompactVector;
+use sucds::int_vectors::{CompactVector, PrefixSummedEliasFano};
 
+use crate::ef_trie_array::EliasFanoTrieArray;
 use crate::loader::GramSource;
-use crate::rank_array::RankArray;
-use crate::trie_array::TrieArray;
 use crate::vocabulary::Vocabulary;
 use crate::Gram;
 use crate::TrieLm;
 use crate::MAX_ORDER;
 
 /// Builder for [`TrieLm`].
-pub struct TrieLmBuilder<L, T, V, A> {
+pub struct TrieLmBuilder<L, V> {
     loaders: Vec<L>,
     vocab: V,
-    arrays: Vec<T>,
-    count_ranks: Vec<A>,
+    arrays: Vec<EliasFanoTrieArray>,
+    count_ranks: Vec<PrefixSummedEliasFano>,
     counts_builder: CountsBuilder,
 }
 
-impl<'a, L, T, V, A> TrieLmBuilder<L, T, V, A>
+impl<'a, L, V> TrieLmBuilder<L, V>
 where
     L: GramSource,
-    T: TrieArray,
     V: Vocabulary<GramType = L::GramType>,
-    A: RankArray,
 {
     /// Creates [`TrieLmBuilder`] from loaders.
     pub fn new(loaders: Vec<L>) -> Result<Self> {
@@ -42,7 +38,7 @@ where
     }
 
     /// Builds [`TrieLm`].
-    pub fn build(mut self) -> Result<TrieLm<T, V, A>> {
+    pub fn build(mut self) -> Result<TrieLm<V>> {
         self.build_counts()?;
         self.build_vocabulary()?;
 
@@ -65,7 +61,7 @@ where
             for rec in gp {
                 self.counts_builder.eat_value(rec?.count);
             }
-            self.counts_builder.build_sequence();
+            self.counts_builder.build_sequence()?;
         }
         Ok(())
     }
@@ -86,7 +82,7 @@ where
             let count_rank = self.counts_builder.rank(0, rec.count).unwrap();
             count_ranks.push(count_rank);
         }
-        self.count_ranks.push(A::build(count_ranks)?);
+        self.count_ranks.push(PrefixSummedEliasFano::from_slice(&count_ranks)?);
 
         let grams: Vec<_> = records.into_iter().map(|r| r.gram).collect();
         self.vocab = V::build(grams)?;
@@ -98,19 +94,17 @@ where
         let mut prev_gp = self.loaders[order - 1].iter()?;
         let curr_gp = self.loaders[order].iter()?;
 
-        // Get number of grams of the current order
-        let (lo, hi) = curr_gp.size_hint();
-        assert_eq!(lo, hi.unwrap());
+        let mut count_ranks = Vec::new();
+        let mut token_ids = Vec::new();
+        if let (_, Some(hi)) = curr_gp.size_hint() {
+            count_ranks.reserve_exact(hi);
+            token_ids.reserve_exact(hi);
+        }
 
-        let mut token_ids = Vec::with_capacity(hi.unwrap());
-        let mut count_ranks = Vec::with_capacity(hi.unwrap());
-
-        // Get number of grams of the previous order
-        let (lo, hi) = prev_gp.size_hint();
-        assert_eq!(lo, hi.unwrap());
-
-        let num_pointers = hi.unwrap() + 1;
-        let mut pointers = Vec::with_capacity(num_pointers);
+        let mut pointers = Vec::new();
+        if let (_, Some(hi)) = prev_gp.size_hint() {
+            pointers.reserve_exact(hi + 1);
+        }
         pointers.push(0);
 
         let mut pointer = 0;
@@ -137,7 +131,6 @@ where
                     return Err(anyhow!("{}-grams data is incomplete.", order + 1));
                 }
             }
-
             pointer += 1;
 
             let token_id = self.vocab.get(token).unwrap();
@@ -146,13 +139,13 @@ where
             count_ranks.push(count_rank);
         }
 
-        while prev_gp.next().is_some() {
+        for _ in prev_gp {
             pointers.push(pointer);
         }
         pointers.push(pointer);
 
-        self.arrays.push(T::build(token_ids, pointers));
-        self.count_ranks.push(A::build(count_ranks)?);
+        self.arrays.push(EliasFanoTrieArray::build(token_ids, pointers)?);
+        self.count_ranks.push(PrefixSummedEliasFano::from_slice(&count_ranks)?);
         Ok(())
     }
 }
@@ -182,11 +175,11 @@ impl CountsBuilder {
     }
 
     /// Builds the sequence of the current order.
-    pub fn build_sequence(&mut self) {
+    pub fn build_sequence(&mut self) -> Result<()> {
         if self.v2f_map.is_empty() {
             self.v2r_maps.push(HashMap::new());
             self.sorted_sequences.push(CompactVector::default());
-            return;
+            return Ok(());
         }
 
         let mut sorted = vec![];
@@ -203,11 +196,10 @@ impl CountsBuilder {
 
         // TODO: maybe don't unwrap here?
         let mut values =
-            CompactVector::with_capacity(sorted.len(), sucds::utils::needed_bits(max_value))
-                .unwrap();
+            CompactVector::with_capacity(sorted.len(), sucds::utils::needed_bits(max_value))?;
         sorted
             .iter()
-            .for_each(|&(v, _)| values.push_int(v).unwrap());
+            .try_for_each(|&(v, _)| values.push_int(v))?;
         self.sorted_sequences.push(values);
 
         let mut v2r_map = HashMap::new();
@@ -215,6 +207,7 @@ impl CountsBuilder {
             v2r_map.insert(v, i);
         }
         self.v2r_maps.push(v2r_map);
+        Ok(())
     }
 
     pub fn rank(&self, order: usize, value: usize) -> Option<usize> {
@@ -235,7 +228,7 @@ mod tests {
             for &x in seq {
                 scb.eat_value(x);
             }
-            scb.build_sequence();
+            scb.build_sequence().unwrap();
         }
 
         assert_eq!(scb.rank(0, 1), Some(1));

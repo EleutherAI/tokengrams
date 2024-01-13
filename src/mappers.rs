@@ -38,7 +38,7 @@ impl SortedArrayMapper {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vocabulary::SimpleVocabulary;
+    use crate::vocabulary::DoubleArrayVocabulary;
     use crate::WordGram;
 
     #[test]
@@ -48,7 +48,7 @@ mod tests {
             WordGram::from_str("D"),
             WordGram::from_str("B"),
         ];
-        let vocab = SimpleVocabulary::build(grams).unwrap();
+        let vocab = DoubleArrayVocabulary::build(grams).unwrap();
         let mut mapper = SortedArrayMapper::default();
 
         assert_eq!(mapper.from_gram(WordGram::from_str("A B D"), &vocab), true);

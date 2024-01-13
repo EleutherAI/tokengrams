@@ -1,70 +1,40 @@
-use std::path::Path;
+/// Return a zero-copy view of the given slice with the given type.
+/// The resulting view has the same lifetime as the provided slice.
+#[inline]
+pub fn transmute_slice<'a, T, U>(slice: &'a [T]) -> &'a [U] {
+    // SAFETY: We use floor division to ensure that we can't read past the end of the slice.
+    let new_len = (slice.len() * std::mem::size_of::<T>()) / std::mem::size_of::<U>();
+    unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const U, new_len) }
+}
 
-use anyhow::Result;
 
-use crate::loader::{GramSource, GramsFileLoader, GramsGzFileLoader};
-use crate::vocabulary::{DoubleArrayVocabulary, Vocabulary};
-use crate::{CountRecord, GramsFileFormats, WordGram};
+#[cfg(test)]
+mod tests {
+    use rand::RngCore;
+    use super::*;
 
-/// Loads all of [`CountRecord`] from a file.
-///
-/// # Arguments
-///
-///  - `filepath`: *N*-gram counts file.
-///  - `fmt`: File format.
-pub fn load_records_from_file<P>(
-    filepath: P,
-    fmt: GramsFileFormats,
-) -> Result<Vec<CountRecord<WordGram>>>
-where
-    P: AsRef<Path>,
-{
-    match fmt {
-        GramsFileFormats::Plain => {
-            let loader = GramsFileLoader::new(filepath);
-            load_records(loader)
-        }
-        GramsFileFormats::Gzip => {
-            let loader = GramsGzFileLoader::new(filepath);
-            load_records(loader)
-        }
+    macro_rules! test_transmute {
+        ($bytes:ident, $type:ty) => {
+            let num_bytes = std::mem::size_of::<$type>();
+            let transmuted = transmute_slice::<u8, $type>(&$bytes);
+            assert_eq!(transmuted.len(), $bytes.len() / num_bytes);
+
+            for (cis, trans) in $bytes.chunks(num_bytes).zip(transmuted) {
+                assert_eq!(<$type>::from_le_bytes(cis.try_into().unwrap()), *trans);
+            }
+        };
     }
-}
 
-/// Loads all of [`CountRecord`] from a gram-count file.
-fn load_records<L: GramSource>(loader: L) -> Result<Vec<CountRecord<L::GramType>>> {
-    let gp = loader.iter()?;
-    let mut records = Vec::new();
-    for rec in gp {
-        let rec = rec?;
-        records.push(rec);
-    }
-    Ok(records)
-}
+    #[test]
+    fn test_transmute_slice() {
+        let mut rng = rand::thread_rng();
+        let mut bytes = vec![0u8; 100];
+        rng.fill_bytes(&mut bytes);
 
-/// Builds [`DoubleArrayVocabulary`] from a file.
-///
-/// # Arguments
-///
-///  - `filepath`: *N*-gram counts file.
-///  - `fmt`: File format.
-pub fn build_vocabulary_from_file<P>(
-    filepath: P,
-    fmt: GramsFileFormats,
-) -> Result<DoubleArrayVocabulary>
-where
-    P: AsRef<Path>,
-{
-    let records = load_records_from_file(filepath, fmt)?;
-    let grams: Vec<_> = records.into_iter().map(|r| r.gram).collect();
-    let vocab = DoubleArrayVocabulary::build(grams)?;
-    Ok(vocab)
-}
-
-/// Gets the file extension of *N*-gram counts file.
-pub fn get_format_extension(fmt: GramsFileFormats) -> Option<String> {
-    match fmt {
-        GramsFileFormats::Plain => None,
-        GramsFileFormats::Gzip => Some("gz".to_string()),
+        test_transmute!(bytes, u8);
+        test_transmute!(bytes, u16);
+        test_transmute!(bytes, u32);
+        test_transmute!(bytes, u64);
+        test_transmute!(bytes, u128);
     }
 }

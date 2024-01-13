@@ -6,25 +6,27 @@ use std::iter::Iterator;
 use ahash::AHashMap;
 use indicatif::{ProgressBar, ProgressStyle};
 use pyo3::exceptions::PyValueError;
-use pyo3::ffi::PyErr_CheckSignals;
+// use pyo3::ffi::PyErr_CheckSignals;
 use pyo3::prelude::*;
 
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufReader, Read};
 
 use crate::gram::TokenGram;
 use crate::loader::GramSource;
 use crate::record::CountRecord;
+use crate::util::transmute_slice;
 use crate::Gram;
 
 /// Counter of N-grams of type T for a fixed N.
 #[derive(Debug, Clone)]
-pub struct GramCounter<T: Copy + Eq + Hash, const N: usize> {
+pub struct GramCounter<T: Copy + Debug + Eq + Hash, const N: usize> {
     /// Map from n-gram to count
     table: AHashMap<[T; N], u32>,
 }
 
-impl<T: Copy + Eq + Hash, const N: usize> GramCounter<T, N> {
+impl<T: Copy + Debug + Eq + Hash, const N: usize> GramCounter<T, N> {
+    /// Size of a token in bytes.
     const TOKEN_SIZE: usize = std::mem::size_of::<T>();
 
     /// Create a new counter.
@@ -41,6 +43,7 @@ impl<T: Copy + Eq + Hash, const N: usize> GramCounter<T, N> {
 
     /// Get a mutable reference to the count of a gram. Unlike .get(), this will insert
     /// into the underlying table if the gram is not present.
+    #[inline]
     pub fn entry(&mut self, gram: &[T; N]) -> &mut u32 {
         self.table.entry(*gram).or_insert(0)
     }
@@ -65,10 +68,7 @@ impl<T: Copy + Eq + Hash, const N: usize> GramCounter<T, N> {
     pub fn update_from<I: Iterator<Item = T>>(&mut self, mut stream: I) {
         // Fill buffer with first n-gram and count it.
         let buf: Vec<_> = stream.by_ref().take(N).collect();
-        let mut arr: [T; N] = match buf.try_into() {
-            Ok(arr) => arr,
-            Err(_) => return, // Do nothing if stream is too short.
-        };
+        let mut arr: [T; N] = buf.try_into().unwrap();
         *self.entry(&arr) += 1;
 
         // Count n-grams.
@@ -81,49 +81,43 @@ impl<T: Copy + Eq + Hash, const N: usize> GramCounter<T, N> {
         }
     }
 
-    /// Read a file of raw u16s into the counter.
-    pub fn count_file(&mut self, path: &str, max_tokens: Option<u64>) -> std::io::Result<()> {
+    /// Read a file of raw tokens into the counter.
+    pub fn count_pretokenized(&mut self, path: &str, doc_size: usize) -> std::io::Result<()> {
         let file = File::open(path)?;
-        let total_tokens = std::cmp::min(
-            file.metadata()?.len() / Self::TOKEN_SIZE as u64,
-            max_tokens.unwrap_or(u64::MAX),
-        );
+        let total_docs = file.metadata()?.len() / (Self::TOKEN_SIZE * doc_size) as u64;
 
         let mut reader = BufReader::new(file);
-        let pb = ProgressBar::new(total_tokens);
+        let pb = ProgressBar::new(total_docs);
         pb.set_style(
             ProgressStyle::with_template(
-                "[{elapsed}/{eta}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
+                "[{elapsed_precise}/{eta_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
             )
             .unwrap(),
         );
 
-        let mut tokens_processed = 0;
-        while tokens_processed < total_tokens {
-            let buffer = reader.fill_buf()?;
-            let num_tokens = buffer.len() / Self::TOKEN_SIZE;
-
-            // Couldn't read a full token
-            if num_tokens == 0 {
-                break;
-            }
-            // SAFETY: we used floor division above so we can't read past the end of the buffer
-            let tokens =
-                unsafe { std::slice::from_raw_parts(buffer.as_ptr() as *const T, num_tokens) };
-            self.update_from(tokens.iter().copied()); // TODO: Maybe get rid of the copy here?
-
-            // All bytes consumed from the buffer
-            // should not be read again.
-            reader.consume(num_tokens * Self::TOKEN_SIZE);
-            tokens_processed += num_tokens as u64;
+        let mut buf = vec![0; doc_size * Self::TOKEN_SIZE];
+        loop {
+            // Based on std::io::read_until implementation
+            match reader.read_exact(&mut buf) {
+                Err(e) => match e.kind() {
+                    // Might be able to try again
+                    std::io::ErrorKind::Interrupted => continue,
+                    // Couldn't read a full chunk before EOF
+                    std::io::ErrorKind::UnexpectedEof => break,
+                    // Propagate irrecoverable errors
+                    _ => return Err(e),
+                },
+                Ok(_) => {
+                    let doc = transmute_slice(buf.as_slice());
+                    self.update_from(doc.iter().copied());
+                }
+            };
 
             // Check for Ctrl-C
-            if unsafe { PyErr_CheckSignals() } != 0 {
-                break;
-            }
+            //if unsafe { PyErr_CheckSignals() } != 0 { break; }
 
             let msg = format!("{} n-grams", self.len());
-            pb.inc(num_tokens as u64);
+            pb.inc(1);
             pb.set_message(msg);
         }
         Ok(())
@@ -134,7 +128,7 @@ pub struct GramCounterIter<'a, T: Copy + Eq + Hash, const N: usize> {
     iter: std::collections::hash_map::Iter<'a, [T; N], u32>,
 }
 
-impl<'a, T: Copy + Eq + Hash, const N: usize> Iterator for GramCounterIter<'a, T, N> {
+impl<'a, T: Copy + Debug + Eq + Hash, const N: usize> Iterator for GramCounterIter<'a, T, N> {
     type Item = anyhow::Result<CountRecord<TokenGram<T>>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -150,7 +144,7 @@ impl<'a, T: Copy + Eq + Hash, const N: usize> Iterator for GramCounterIter<'a, T
     }
 }
 
-impl<'a, T: Copy + Eq + Hash, const N: usize> GramSource for &'a GramCounter<T, N> {
+impl<'a, T: Copy + Debug + Eq + Hash, const N: usize> GramSource for &'a GramCounter<T, N> {
     type GramType = TokenGram<T>;
     type Iter = GramCounterIter<'a, T, N>;
 
@@ -215,6 +209,12 @@ mod tests {
         range_test!(u16, 2);
         range_test!(u16, 3);
     }
+
+    #[test]
+    fn test_pile() {
+        let mut counter = GramCounter::<u16, 3>::new();
+        counter.count_pretokenized("/mnt/ssd-1/pile_preshuffled/deduped/document.bin", 2049).unwrap();
+    }
 }
 
 /// Python bindings
@@ -228,9 +228,9 @@ macro_rules! ngram_counter {
         #[pymethods]
         impl $name {
             #[staticmethod]
-            pub fn from_file(path: &str, max_tokens: Option<u64>) -> PyResult<Self> {
+            pub fn from_file(path: &str, doc_size: usize) -> PyResult<Self> {
                 let mut counter = GramCounter::<u16, $size>::new();
-                counter.count_file(path, max_tokens)?;
+                counter.count_pretokenized(path, doc_size)?;
                 Ok(Self { inner: counter })
             }
 

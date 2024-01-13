@@ -1,3 +1,4 @@
+pub mod ef_trie_array;
 pub mod gram;
 pub mod gram_counter;
 pub mod loader;
@@ -10,8 +11,6 @@ pub mod util;
 pub mod vocabulary;
 
 mod mappers;
-mod rank_array;
-mod trie_array;
 
 /// The maximum order of *N*-grams (i.e., `1 <= N <= 8`).
 pub const MAX_ORDER: usize = 8;
@@ -31,13 +30,8 @@ pub use trie_lm::{TrieLm, TrieLmBuilder, TrieLmLookuper};
 pub use loader::{GramSource, GramsFileFormats, GramsTextLoader};
 pub use parser::GramsParser;
 
-pub use rank_array::{EliasFanoRankArray, RankArray, SimpleRankArray};
-pub use trie_array::{EliasFanoTrieArray, SimpleTrieArray, TrieArray};
-pub use vocabulary::{DoubleArrayVocabulary, IdentityVocabulary, SimpleVocabulary, Vocabulary};
-
-/// Simple implementation of [`TrieLm`].
-/// Note that this is for debug, and do NOT use it for storing massive datasets.
-pub type SimpleTrieLm = TrieLm<SimpleTrieArray, SimpleVocabulary, SimpleRankArray>;
+pub use ef_trie_array::EliasFanoTrieArray;
+pub use vocabulary::{DoubleArrayVocabulary, IdentityVocabulary, Vocabulary};
 
 /// Python bindings
 use pyo3::prelude::*;

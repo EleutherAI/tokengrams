@@ -1,13 +1,10 @@
 mod identity;
-mod simple;
 mod yada;
-
-//use std::io::{Read, Write};
 
 use anyhow::Result;
 
 pub use crate::vocabulary::{
-    identity::IdentityVocabulary, simple::SimpleVocabulary, yada::DoubleArrayVocabulary,
+    identity::IdentityVocabulary, yada::DoubleArrayVocabulary,
 };
 use crate::Gram;
 
@@ -39,12 +36,6 @@ mod tests {
             WordGram::from_str("D"),
             WordGram::from_str("B"),
         ];
-
-        let vocab = SimpleVocabulary::build(grams.clone()).unwrap();
-        assert_eq!(vocab.get(WordGram::from_str("A")), Some(0));
-        assert_eq!(vocab.get(WordGram::from_str("B")), Some(2));
-        assert_eq!(vocab.get(WordGram::from_str("C")), None);
-        assert_eq!(vocab.get(WordGram::from_str("D")), Some(1));
 
         let vocab = DoubleArrayVocabulary::build(grams).unwrap();
         assert_eq!(vocab.get(WordGram::from_str("A")), Some(0));

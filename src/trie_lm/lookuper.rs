@@ -1,23 +1,21 @@
+use sucds::int_vectors::Access;
+
 use crate::mappers::SortedArrayMapper;
-use crate::rank_array::RankArray;
-use crate::trie_array::TrieArray;
 use crate::trie_lm::TrieLm;
 use crate::vocabulary::Vocabulary;
 
 /// Lookuper for [`TrieLm`].
-pub struct TrieLmLookuper<'a, T, V, A> {
-    trie: &'a TrieLm<T, V, A>,
+pub struct TrieLmLookuper<'a, V> {
+    trie: &'a TrieLm<V>,
     mapper: SortedArrayMapper,
 }
 
-impl<'a, T, V, A> TrieLmLookuper<'a, T, V, A>
+impl<'a, V> TrieLmLookuper<'a, V>
 where
-    T: TrieArray,
     V: Vocabulary,
-    A: RankArray,
 {
     /// Creates [`TrieLmLookuper`] from [`TrieLm`].
-    pub fn new(trie: &'a TrieLm<T, V, A>) -> TrieLmLookuper<'a, T, V, A> {
+    pub fn new(trie: &'a TrieLm<V>) -> TrieLmLookuper<'a, V> {
         TrieLmLookuper {
             trie,
             mapper: SortedArrayMapper::default(),
@@ -46,7 +44,7 @@ where
                 return None;
             }
         }
-        let count_rank = self.trie.count_ranks[order].get(pos)?;
+        let count_rank = self.trie.count_ranks[order].access(pos)?;
         self.trie.counts[order].get_int(count_rank)
     }
 }

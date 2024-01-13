@@ -5,12 +5,11 @@ use std::path::Path;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use sucds::int_vectors::CompactVector;
+use sucds::int_vectors::{CompactVector, PrefixSummedEliasFano};
 
+use crate::ef_trie_array::EliasFanoTrieArray;
 use crate::loader::{GramsFileLoader, GramsGzFileLoader, GramsTextLoader};
-use crate::rank_array::RankArray;
 use crate::sucds_glue;
-use crate::trie_array::TrieArray;
 use crate::vocabulary::Vocabulary;
 use crate::GramsFileFormats;
 use crate::WordGram;
@@ -20,20 +19,20 @@ pub use crate::trie_lm::lookuper::TrieLmLookuper;
 
 /// Elias-Fano trie for indexing *N*-grams with their frequency counts.
 #[derive(Deserialize, Default, Debug, Serialize)]
-pub struct TrieLm<T, V, A> {
+pub struct TrieLm<V> {
     vocab: V,
-    arrays: Vec<T>,
-    count_ranks: Vec<A>,
+    arrays: Vec<EliasFanoTrieArray>,
+
+    #[serde(with = "sucds_glue")]
+    count_ranks: Vec<PrefixSummedEliasFano>,
 
     #[serde(with = "sucds_glue")]
     counts: Vec<CompactVector>,
 }
 
-impl<T, V, A> TrieLm<T, V, A>
+impl<V> TrieLm<V>
 where
-    T: TrieArray,
     V: Vocabulary<GramType = WordGram>,
-    A: RankArray,
 {
     /// Builds the index from *N*-gram counts files.
     ///
@@ -98,14 +97,12 @@ where
 }
 
 // Methods which work for TokenGram as well as WordGram.
-impl<T, V, A> TrieLm<T, V, A>
+impl<V> TrieLm<V>
 where
-    T: TrieArray,
     V: Vocabulary,
-    A: RankArray,
 {
     /// Makes the lookuper.
-    pub fn lookuper(&self) -> TrieLmLookuper<T, V, A> {
+    pub fn lookuper(&self) -> TrieLmLookuper<V> {
         TrieLmLookuper::new(self)
     }
 
@@ -122,8 +119,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use sucds::int_vectors::Access;
+
     use super::*;
-    use crate::{GramSource, SimpleTrieLm, WordGram, WordTrieLm};
+    use crate::{GramSource, WordGram, WordTrieLm};
 
     const GRAMS_1: &'static str = "4
 A\t10
@@ -166,13 +165,13 @@ D D D\t1
         assert_eq!(vocab.get(WordGram::from_str("D")), Some(D));
     }
 
-    fn test_unigrams<A: RankArray>(ra: &A) {
+    fn test_unigrams(ra: &PrefixSummedEliasFano) {
         for (i, &count_rank) in [2, 1, 0, 0].iter().enumerate() {
-            assert_eq!(ra.get(i), Some(count_rank));
+            assert_eq!(ra.access(i), Some(count_rank));
         }
     }
 
-    fn test_bigrams<T: TrieArray, A: RankArray>(ta: &T, ra: &A) {
+    fn test_bigrams(ta: &EliasFanoTrieArray, ra: &PrefixSummedEliasFano) {
         for (i, &token_id) in [A, C, B, C, D, A, D, B, D].iter().enumerate() {
             assert_eq!(ta.token_id(i), Some(token_id));
         }
@@ -180,11 +179,11 @@ D D D\t1
             assert_eq!(ta.range(i), Some(range));
         }
         for (i, &count_rank) in [3, 0, 0, 0, 1, 2, 0, 1, 1].iter().enumerate() {
-            assert_eq!(ra.get(i), Some(count_rank));
+            assert_eq!(ra.access(i), Some(count_rank));
         }
     }
 
-    fn test_trigrams<T: TrieArray, A: RankArray>(ta: &T, ra: &A) {
+    fn test_trigrams(ta: &EliasFanoTrieArray, ra: &PrefixSummedEliasFano) {
         for (i, &token_id) in [C, C, D, D, B, C, D].iter().enumerate() {
             assert_eq!(ta.token_id(i), Some(token_id));
         }
@@ -205,17 +204,8 @@ D D D\t1
             assert_eq!(ta.range(i).unwrap(), range);
         }
         for (i, &count_rank) in [2, 1, 0, 0, 1, 0, 0].iter().enumerate() {
-            assert_eq!(ra.get(i), Some(count_rank));
+            assert_eq!(ra.access(i), Some(count_rank));
         }
-    }
-
-    #[test]
-    fn test_simple_components() {
-        let lm = SimpleTrieLm::from_texts(vec![GRAMS_1, GRAMS_2, GRAMS_3]).unwrap();
-        test_vocabulary(&lm.vocab);
-        test_unigrams(&lm.count_ranks[0]);
-        test_bigrams(&lm.arrays[0], &lm.count_ranks[1]);
-        test_trigrams(&lm.arrays[1], &lm.count_ranks[2]);
     }
 
     #[test]
@@ -225,37 +215,6 @@ D D D\t1
         test_unigrams(&lm.count_ranks[0]);
         test_bigrams(&lm.arrays[0], &lm.count_ranks[1]);
         test_trigrams(&lm.arrays[1], &lm.count_ranks[2]);
-    }
-
-    #[test]
-    fn test_simple_lookup() {
-        let lm = SimpleTrieLm::from_texts(vec![GRAMS_1, GRAMS_2, GRAMS_3]).unwrap();
-        let mut lookuper = lm.lookuper();
-
-        let loader = GramsTextLoader::new(GRAMS_1.as_bytes());
-        let mut gp = loader.iter().unwrap();
-        while let Some(rec) = gp.next_record() {
-            let rec = rec.unwrap();
-            assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
-        }
-
-        let loader = GramsTextLoader::new(GRAMS_2.as_bytes());
-        let mut gp = loader.iter().unwrap();
-        while let Some(rec) = gp.next_record() {
-            let rec = rec.unwrap();
-            assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
-        }
-
-        let loader = GramsTextLoader::new(GRAMS_3.as_bytes());
-        let mut gp = loader.iter().unwrap();
-        while let Some(rec) = gp.next_record() {
-            let rec = rec.unwrap();
-            assert_eq!(lookuper.with_gram(rec.gram), Some(rec.count));
-        }
-
-        assert_eq!(lookuper.with_gram(WordGram::from_str("E")), None);
-        assert_eq!(lookuper.with_gram(WordGram::from_str("B A")), None);
-        assert_eq!(lookuper.with_gram(WordGram::from_str("B B A")), None);
     }
 
     #[test]
@@ -287,5 +246,12 @@ D D D\t1
         assert_eq!(lookuper.with_gram(WordGram::from_str("E")), None);
         assert_eq!(lookuper.with_gram(WordGram::from_str("B A")), None);
         assert_eq!(lookuper.with_gram(WordGram::from_str("B B A")), None);
+    }
+
+    #[test]
+    fn test_marginalization() {
+        let lm = WordTrieLm::from_texts(vec![GRAMS_1, GRAMS_2, GRAMS_3]).unwrap();
+        test_vocabulary(&lm.vocab);
+        test_unigrams(&lm.count_ranks[0]);
     }
 }

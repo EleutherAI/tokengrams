@@ -17,6 +17,7 @@ indicatif = "0.17.7"
 pyo3 = { version = "0.20.1", features = ["anyhow", "extension-module"] }
 serde = { version = "1.0.195", features = ["derive"] }
 sucds = "0.8.1"
+tokenizers = { version = "0.15.0", features = ["http"] }
 yada = "0.5.0"
 
 [dev-dependencies]

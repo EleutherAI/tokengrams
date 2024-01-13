@@ -3,18 +3,17 @@ use std::path::PathBuf;
 use bincode::{deserialize_from, serialize_into, serialized_size};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use tokenizers::Tokenizer;
 
 use crate::gram::{Gram, TokenGram};
 use crate::gram_counter::GramCounter;
 use crate::loader::{GramsFileFormats, GramsTextLoader};
-use crate::rank_array::EliasFanoRankArray;
-use crate::trie_array::EliasFanoTrieArray;
 use crate::trie_lm::{TrieLm, TrieLmBuilder, TrieLmLookuper};
 use crate::vocabulary::{DoubleArrayVocabulary, IdentityVocabulary};
 use crate::WordGram;
 
-pub type TokenTrieLm = TrieLm<EliasFanoTrieArray, IdentityVocabulary, EliasFanoRankArray>;
-pub type WordTrieLm = TrieLm<EliasFanoTrieArray, DoubleArrayVocabulary, EliasFanoRankArray>;
+pub type TokenTrieLm = TrieLm<IdentityVocabulary>;
+pub type WordTrieLm = TrieLm<DoubleArrayVocabulary>;
 
 #[pyclass(frozen)]
 pub struct TokenTrie {
@@ -24,9 +23,9 @@ pub struct TokenTrie {
 #[pymethods]
 impl TokenTrie {
     #[staticmethod]
-    pub fn from_file(path: String, max_tokens: Option<u64>) -> PyResult<Self> {
+    pub fn from_file(path: String, doc_size: usize) -> PyResult<Self> {
         let mut counter = GramCounter::<u16, 3>::new();
-        counter.count_file(&path, max_tokens)?;
+        counter.count_pretokenized(&path, doc_size)?;
 
         Ok(Self {
             trie: TrieLmBuilder::new(vec![&counter])?.build()?,
