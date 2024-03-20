@@ -9,11 +9,10 @@ name = "tokengrams"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ahash = "0.8.7"
-anyhow = "1.0.79"
-itertools = "0.12.0"
-pyo3 = { version = "0.20.1", features = ["anyhow", "extension-module"] }
-serde = { version = "1.0.195", features = ["derive"] }
+bincode = "1.3.3"
+pyo3 = { version = "0.20.1", features = ["extension-module"] }
+rayon = "1.9.0"
+serde = { version = "1.0.197", features = ["derive"] }
 utf16_literal = "0.2.1"
 
 [[test]]

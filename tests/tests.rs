@@ -8,94 +8,11 @@ use utf16_literal::utf16;
 fn sais(text: &str) -> SuffixTable {
     SuffixTable::new(text.encode_utf16().collect::<Vec<_>>())
 }
-fn naive(text: &str) -> SuffixTable {
-    SuffixTable::new_naive(text.encode_utf16().collect::<Vec<_>>())
-}
 
 fn qc<T: Testable>(f: T) {
     QuickCheck::new().tests(1000).max_tests(10000).quickcheck(f);
 }
 
-// These tests assume the correctness of the `naive` method of computing a
-// suffix array. (It's only a couple lines of code and probably difficult to
-// get wrong.)
-
-#[test]
-fn basic1() {
-    assert_eq!(naive("apple"), sais("apple"));
-}
-
-#[test]
-fn basic2() {
-    assert_eq!(naive("banana"), sais("banana"));
-}
-
-#[test]
-fn basic3() {
-    assert_eq!(naive("mississippi"), sais("mississippi"));
-}
-
-#[test]
-fn basic4() {
-    assert_eq!(naive("tgtgtgtgcaccg"), sais("tgtgtgtgcaccg"));
-}
-
-#[test]
-fn empty_is_ok() {
-    assert_eq!(naive(""), sais(""));
-}
-
-#[test]
-fn one_is_ok() {
-    assert_eq!(naive("a"), sais("a"));
-}
-
-#[test]
-fn two_diff_is_ok() {
-    assert_eq!(naive("ab"), sais("ab"));
-}
-
-#[test]
-fn two_same_is_ok() {
-    assert_eq!(naive("aa"), sais("aa"));
-}
-
-#[test]
-fn nul_is_ok() {
-    assert_eq!(naive("\x00"), sais("\x00"));
-}
-
-#[test]
-fn snowman_is_ok() {
-    assert_eq!(naive("☃abc☃"), sais("☃abc☃"));
-}
-
-// See if we can catch any corner cases we forgot about.
-#[test]
-fn prop_naive_equals_sais() {
-    fn prop(s: String) -> TestResult {
-        if s.is_empty() {
-            return TestResult::discard();
-        }
-        let expected = naive(&*s);
-        let got = sais(&*s);
-        TestResult::from_bool(expected == got)
-    }
-    qc(prop as fn(String) -> TestResult);
-}
-
-#[test]
-fn prop_matches_naive() {
-    fn prop(s: String) -> bool {
-        let s = s.encode_utf16().collect::<Vec<_>>();
-        let expected_table = SuffixTable::new_naive(s.clone());
-        let expected = expected_table.table();
-        let got_table = SuffixTable::new(s);
-        let got = got_table.table();
-        expected == got
-    }
-    qc(prop as fn(String) -> bool);
-}
 
 // Do some testing on substring search.
 
@@ -118,6 +35,34 @@ fn empty_find_two() {
     let sa = sais("");
     assert_eq!(sa.positions(utf16!("ab")), &[]);
     assert!(!sa.contains(utf16!("ab")));
+}
+
+#[test]
+fn prop_merge() {
+    fn prop(s1: Vec<u16>, s2: Vec<u16>) -> TestResult {
+        let mut s = s1.clone();
+        s.extend(s2.clone());
+
+        let t1 = SuffixTable::new(s1);
+        let t2 = SuffixTable::new(s2);
+
+        let expected = SuffixTable::new(s);
+        let got = SuffixTable::from_tables(vec![t1, t2]);
+
+        TestResult::from_bool(expected == got)
+    }
+    qc(prop as fn(Vec<u16>, Vec<u16>) -> TestResult);
+}
+
+#[test]
+fn prop_par() {
+    fn prop(s: Vec<u16>) -> TestResult {
+        let t1 = SuffixTable::new(s.clone());
+        let t2 = SuffixTable::par_new(s);
+
+        TestResult::from_bool(t1 == t2)
+    }
+    qc(prop as fn(Vec<u16>) -> TestResult);
 }
 
 #[test]
