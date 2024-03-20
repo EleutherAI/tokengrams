@@ -29,7 +29,6 @@
  */
  extern crate utf16_literal;
 
- use std::borrow::Cow;
  use std::fmt;
  use std::iter;
  use std::slice;
@@ -38,9 +37,6 @@
  use self::SuffixType::{Ascending, Descending, Valley};
  
  /// A suffix table is a sequence of lexicographically sorted suffixes.
- ///
- /// The lifetimes `'s` and `'t` (respectively) refer to the text and suffix
- /// indices when borrowed.
  ///
  /// This is distinct from a suffix array in that it *only* contains
  /// suffix indices. It has no "enhanced" information like the inverse suffix
@@ -82,24 +78,24 @@
  /// original text is very small).
  
  #[derive(Clone, Eq, PartialEq)]
- pub struct SuffixTable<'s, 't> {
-     text: Cow<'s, [u16]>,
-     table: Cow<'t, [u64]>,
+ pub struct SuffixTable {
+     text: Box<[u16]>,
+     table: Box<[u64]>,
  }
  
- impl<'s, 't> SuffixTable<'s, 't> {
+ impl SuffixTable {
      /// Creates a new suffix table for `text` in `O(n)` time and `O(kn)`
      /// space, where `k` is the size of the alphabet in the text.
      ///
      /// The table stores either `S` or a `&S` and a lexicographically sorted
      /// list of suffixes. Each suffix is represented by a 32 bit integer and
      /// is a **byte index** into `text`.
-     pub fn new<S>(text: S) -> SuffixTable<'s, 't>
+     pub fn new<S>(text: S) -> SuffixTable
      where
-         S: Into<Cow<'s, [u16]>>,
+         S: Into<Box<[u16]>>,
      {
          let text = text.into();
-         let table = Cow::Owned(sais_table(&text));
+         let table = sais_table(&text).into_boxed_slice();
          SuffixTable {
              text: text,
              table: table,
@@ -113,12 +109,12 @@
      /// of suffix tables for small strings.
      #[doc(hidden)]
      #[allow(dead_code)]
-     pub fn new_naive<S>(text: S) -> SuffixTable<'s, 't>
+     pub fn new_naive<S>(text: S) -> SuffixTable
      where
-         S: Into<Cow<'s, [u16]>>,
+         S: Into<Box<[u16]>>,
      {
          let text = text.into();
-         let table = Cow::Owned(naive_table(&text));
+         let table = naive_table(&text).into_boxed_slice();
          SuffixTable {
              text: text,
              table: table,
@@ -135,10 +131,10 @@
      /// This fails if the number of characters in `text` does not equal the
      /// number of suffixes in `table`.
      #[allow(dead_code)]
-     pub fn from_parts<S, T>(text: S, table: T) -> SuffixTable<'s, 't>
+     pub fn from_parts<S, T>(text: S, table: T) -> SuffixTable
      where
-         S: Into<Cow<'s, [u16]>>,
-         T: Into<Cow<'t, [u64]>>,
+         S: Into<Box<[u16]>>,
+         T: Into<Box<[u64]>>,
      {
          let (text, table) = (text.into(), table.into());
          assert_eq!(text.len(), table.len());
@@ -152,7 +148,7 @@
      ///
      /// This is useful to avoid copying when the suffix table is part of an
      /// intermediate computation.
-     pub fn into_parts(self) -> (Cow<'s, [u16]>, Cow<'t, [u64]>) {
+     pub fn into_parts(self) -> (Box<[u16]>, Box<[u64]>) {
          (self.text, self.table)
      }
  
@@ -163,8 +159,6 @@
          for (rank, &sufstart) in self.table().iter().enumerate() {
              inverse[sufstart as usize] = rank as u64;
          }
-         //lcp_lens_quadratic(self.text(), self.table())
-         // Broken on Unicode text for now. ---AG
          lcp_lens_linear(self.text(), self.table(), &inverse)
      }
  
@@ -302,7 +296,7 @@
      }
  }
  
- impl<'s, 't> fmt::Debug for SuffixTable<'s, 't> {
+ impl fmt::Debug for SuffixTable {
      fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
          writeln!(f, "\n-----------------------------------------")?;
          writeln!(f, "SUFFIX TABLE")?;
