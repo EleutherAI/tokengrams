@@ -1,3 +1,4 @@
 from .tokengrams import (
-    GramIndex
+    InMemoryIndex,
+    MemmapIndex,
 )

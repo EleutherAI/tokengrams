@@ -6,18 +6,17 @@ use std::io::Read;
 use crate::table::SuffixTable;
 use crate::util::transmute_slice;
 
-
 #[pyclass]
-pub struct GramIndex {
+pub struct InMemoryIndex {
     table: SuffixTable,
 }
 
 #[pymethods]
-impl GramIndex {
+impl InMemoryIndex {
     #[new]
     fn new(_py: Python, tokens: Vec<u16>) -> Self {
-        GramIndex {
-            table: SuffixTable::par_new(tokens),
+        InMemoryIndex {
+            table: SuffixTable::new(tokens),
         }
     }
 
@@ -25,7 +24,7 @@ impl GramIndex {
     fn from_pretrained(path: String) -> PyResult<Self> {
         // TODO: handle errors here
         let table: SuffixTable = deserialize(&std::fs::read(path)?).unwrap();
-        Ok(GramIndex { table })
+        Ok(InMemoryIndex { table })
     }
 
     #[staticmethod]
@@ -41,8 +40,8 @@ impl GramIndex {
             file.read_to_end(&mut buffer)?;
         };
 
-        Ok(GramIndex {
-            table: SuffixTable::par_new(transmute_slice(buffer.as_slice())),
+        Ok(InMemoryIndex {
+            table: SuffixTable::new(transmute_slice(buffer.as_slice())),
         })
     }
 

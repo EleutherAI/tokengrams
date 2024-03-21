@@ -7,11 +7,10 @@ pub fn transmute_slice<'a, T, U>(slice: &'a [T]) -> &'a [U] {
     unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const U, new_len) }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use rand::RngCore;
     use super::*;
+    use rand::RngCore;
 
     macro_rules! test_transmute {
         ($bytes:ident, $type:ty) => {

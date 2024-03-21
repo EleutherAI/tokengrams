@@ -1,7 +1,7 @@
 extern crate quickcheck;
 extern crate utf16_literal;
 
-use quickcheck::{QuickCheck, TestResult, Testable};
+use quickcheck::{QuickCheck, Testable};
 use tokengrams::SuffixTable;
 use utf16_literal::utf16;
 
@@ -35,34 +35,6 @@ fn empty_find_two() {
     let sa = sais("");
     assert_eq!(sa.positions(utf16!("ab")), &[]);
     assert!(!sa.contains(utf16!("ab")));
-}
-
-#[test]
-fn prop_merge() {
-    fn prop(s1: Vec<u16>, s2: Vec<u16>) -> TestResult {
-        let mut s = s1.clone();
-        s.extend(s2.clone());
-
-        let t1 = SuffixTable::new(s1);
-        let t2 = SuffixTable::new(s2);
-
-        let expected = SuffixTable::new(s);
-        let got = SuffixTable::from_tables(vec![t1, t2]);
-
-        TestResult::from_bool(expected == got)
-    }
-    qc(prop as fn(Vec<u16>, Vec<u16>) -> TestResult);
-}
-
-#[test]
-fn prop_par() {
-    fn prop(s: Vec<u16>) -> TestResult {
-        let t1 = SuffixTable::new(s.clone());
-        let t2 = SuffixTable::par_new(s);
-
-        TestResult::from_bool(t1 == t2)
-    }
-    qc(prop as fn(Vec<u16>) -> TestResult);
 }
 
 #[test]
@@ -112,17 +84,6 @@ fn many_exists_long() {
     let sa = sais("zzzzabczzzzzabczzzzzz");
     assert_eq!(sa.positions(utf16!("abc")), &[4, 12]);
     assert!(sa.contains(utf16!("abc")));
-}
-
-#[test]
-fn parts() {
-    let sa = sais("poëzie");
-    let sa2 = sa.clone();
-
-    let (data, table) = sa2.into_parts();
-    let sa3 = SuffixTable::from_parts(data, table);
-
-    assert_eq!(sa, sa3);
 }
 
 #[test]
