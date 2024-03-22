@@ -18,6 +18,9 @@ extern crate utf16_literal;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Deref, u64};
+use rand::distributions::{Distribution, WeightedIndex};
+use rand::thread_rng;
+
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 ///
@@ -193,7 +196,7 @@ where
         let tokens: Vec<u16> = indices.iter()
             .map(|&index| {
                 let usize_index = index as usize + query.len();
-                self.text.get(usize_index).copied() // Use `copied()` to convert &u16 to u16
+                self.text.get(usize_index).copied()
             })
             .filter_map(|x| x)
             .collect();
@@ -236,12 +239,20 @@ where
     left
 }
 
-// 2usize.pow(std::mem::sizeof<usize>())]; // 64
-// return a list of length u16 containing values of length usize
 fn bincount(nums: &[u16]) -> Vec<usize> {
     let mut counts: Vec<usize> = vec![0usize; usize::from(u16::MAX) + 1];
     for &num in nums {
         counts[usize::from(num)] += 1;
     }
     counts
+}
+
+pub fn sample(counts: &[usize]) -> u16 {
+    assert!(counts.len() <= u16::MAX as usize + 1, "counts exceeds u16::MAX");
+    
+    let dist = WeightedIndex::new(counts).unwrap();
+    let mut rng = thread_rng();
+
+    let sampled_index = dist.sample(&mut rng);
+    sampled_index as u16
 }

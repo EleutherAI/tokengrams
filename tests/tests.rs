@@ -148,7 +148,6 @@ fn prop_positions() {
     qc(prop as fn(String, u16) -> bool);
 }
 
-
 #[test]
 fn next_token_counts_exists() {
     let sa = sais("aaab");
@@ -159,4 +158,16 @@ fn next_token_counts_exists() {
 
     assert_eq!(2, sa.next_token_counts(query)[a_index]);
     assert_eq!(1, sa.next_token_counts(query)[b_index]);
+}
+
+use tokengrams::table::sample; // Import the function
+
+#[test]
+fn sample_exists() {
+    let sa = sais("ab");
+    let counts = sa.next_token_counts(utf16!("a"));
+    let b_index = utf16!("b")[0];
+
+    let token = sample(&counts);
+    assert_eq!(token, b_index);
 }
