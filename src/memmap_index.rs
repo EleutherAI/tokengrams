@@ -1,4 +1,5 @@
 use indicatif::{ProgressBar, ProgressStyle};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::fs::{File, OpenOptions};
@@ -82,5 +83,10 @@ impl MemmapIndex {
 
     fn count(&self, query: Vec<u16>) -> usize {
         self.table.positions(&query).len()
+    }
+
+    fn sample(&self, query: Vec<u16>, n: u16, k: u16) -> Result<Vec<u16>, PyErr> {
+        self.table.sample(&query, n, k)
+            .map_err(|error| PyValueError::new_err(error.to_string()))  
     }
 }

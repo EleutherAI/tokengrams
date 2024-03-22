@@ -3,6 +3,10 @@ extern crate utf16_literal;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Deref, u64};
+use rand::distributions::{Distribution, WeightedIndex};
+use rand::thread_rng;
+use anyhow::Result;
+
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -167,19 +171,44 @@ where
     }
 
     /// Returns an unordered list of counts of token values that succeed `query`.
-    pub fn next_token_counts(&self, query: &[u16]) -> Vec<usize> {
+    pub fn bincount_next_tokens(&self, query: &[u16]) -> Vec<usize> {
+        let mut counts: Vec<usize> = vec![0usize; usize::from(u16::MAX) + 1];
         let indices = self.positions(query);
-        let tokens: Vec<u16> = indices.iter()
-            .map(|&index| {
-                let usize_index = index as usize + query.len();
-                self.text.get(usize_index).copied() // Use `copied()` to convert &u16 to u16
-            })
-            .filter_map(|x| x)
-            .collect();
 
-        let counts = bincount(&tokens);
+        for &index in indices {
+            // Get index of token directly after query
+            let usize_index = index as usize + query.len();
+
+            if usize_index < self.text.len() {
+                let char = self.text[usize_index];
+                counts[char as usize] += 1;
+            }   
+        }
+
         counts
     }
+
+    /// Sample a character with probability proportional to its frequency succeeding the query.
+    pub fn sample(&self, query: &[u16], n: u16, k: u16) -> Result<Vec<u16>> {
+        let mut rng = thread_rng();
+        let mut sequence = Vec::from(query);
+
+        for _ in 0..k {
+            let start = sequence.len().saturating_sub(n as usize);
+            let prev = &sequence[start..];
+
+            let counts: Vec<usize> = self.bincount_next_tokens(prev);
+            let dist = WeightedIndex::new(&counts)?;
+            let sampled_index = dist.sample(&mut rng);
+
+            sequence.push(sampled_index as u16);
+        }
+
+        Ok(sequence)
+    }
+
+
+
 }
 
 impl fmt::Debug for SuffixTable {
@@ -213,14 +242,4 @@ where
         }
     }
     left
-}
-
-// 2usize.pow(std::mem::sizeof<usize>())]; // 64
-// return a list of length u16 containing values of length usize
-fn bincount(nums: &[u16]) -> Vec<usize> {
-    let mut counts: Vec<usize> = vec![0usize; usize::from(u16::MAX) + 1];
-    for &num in nums {
-        counts[usize::from(num)] += 1;
-    }
-    counts
 }

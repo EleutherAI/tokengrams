@@ -148,15 +148,25 @@ fn prop_positions() {
     qc(prop as fn(String, u16) -> bool);
 }
 
-
 #[test]
-fn next_token_counts_exists() {
+fn bincount_next_tokens_exists() {
     let sa = sais("aaab");
     
     let query = utf16!("a");
     let a_index = utf16!("a")[0] as usize;
     let b_index = utf16!("b")[0] as usize;
 
-    assert_eq!(2, sa.next_token_counts(query)[a_index]);
-    assert_eq!(1, sa.next_token_counts(query)[b_index]);
+    assert_eq!(2, sa.bincount_next_tokens(query)[a_index]);
+    assert_eq!(1, sa.bincount_next_tokens(query)[b_index]);
+}
+
+#[test]
+fn sample_exists() {
+    let sa = sais("ab");
+
+    let query = utf16!("a");
+    let b_index = utf16!("b")[0];
+
+    let token = sa.sample(query, 2, 1);
+    assert_eq!(*token.unwrap().last().unwrap(), b_index);
 }
