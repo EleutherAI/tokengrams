@@ -71,4 +71,8 @@ impl MemmapIndex {
     fn count(&self, query: Vec<u16>) -> usize {
         self.table.positions(&query).len()
     }
+
+    fn sample(&self, query: Vec<u16>) -> u16 {
+        self.table.sample(&query)
+    }
 }

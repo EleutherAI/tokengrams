@@ -53,6 +53,10 @@ impl InMemoryIndex {
         self.table.positions(&query).len()
     }
 
+    fn sample(&self, query: Vec<u16>) -> u16 {
+        self.table.sample(&query)
+    }
+    
     fn save(&self, path: String) -> PyResult<()> {
         // TODO: handle errors here
         let bytes = serialize(&self.table).unwrap();
