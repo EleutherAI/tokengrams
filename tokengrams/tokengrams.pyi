@@ -14,6 +14,10 @@ class InMemoryIndex:
     def count(self, query: list[int]) -> int:
         """Count the number of occurrences of a query in the index."""
 
+    def sample(self, query: list[int]) -> int:
+        """Sample a character with a probability corresponding to the number of occurrences directly after the query."""    
+    
+
 
 class MemmapIndex:
     """An n-gram index backed by a memory-mapped file."""
@@ -30,3 +34,6 @@ class MemmapIndex:
     
     def count(self, query: list[int]) -> int:
         """Count the number of occurrences of a query in the index."""
+
+    def sample(self, query: list[int]) -> int:
+        """Sample a character with a probability corresponding to the number of occurrences directly after the query."""    
