@@ -165,6 +165,21 @@ where
             &self.table[start..end]
         }
     }
+
+    /// Returns an unordered list of counts of token values that succeed `query`.
+    pub fn next_token_counts(&self, query: &[u16]) -> Vec<usize> {
+        let indices = self.positions(query);
+        let tokens: Vec<u16> = indices.iter()
+            .map(|&index| {
+                let usize_index = index as usize + query.len();
+                self.text.get(usize_index).copied() // Use `copied()` to convert &u16 to u16
+            })
+            .filter_map(|x| x)
+            .collect();
+
+        let counts = bincount(&tokens);
+        counts
+    }
 }
 
 impl fmt::Debug for SuffixTable {
@@ -198,4 +213,14 @@ where
         }
     }
     left
+}
+
+// 2usize.pow(std::mem::sizeof<usize>())]; // 64
+// return a list of length u16 containing values of length usize
+fn bincount(nums: &[u16]) -> Vec<usize> {
+    let mut counts: Vec<usize> = vec![0usize; usize::from(u16::MAX) + 1];
+    for &num in nums {
+        counts[usize::from(num)] += 1;
+    }
+    counts
 }
