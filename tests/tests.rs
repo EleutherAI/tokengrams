@@ -147,3 +147,10 @@ fn prop_positions() {
     }
     qc(prop as fn(String, u16) -> bool);
 }
+
+
+#[test]
+fn next_token_counts_exists() {
+    let sa = sais("aaa");
+    assert_eq!(2, sa.next_token_counts(utf16!("a"))[97]);
+}
