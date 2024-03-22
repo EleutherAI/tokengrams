@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Deref, u64};
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::thread_rng;
+use utf16_literal::utf16;
 
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
@@ -191,19 +192,36 @@ where
     }
 
     /// Returns an unordered list of counts of token values that succeed `query`.
-    pub fn next_token_counts(&self, query: &[u16]) -> Vec<usize> {
+    pub fn bincount_next_tokens(&self, query: &[u16]) -> Vec<usize> {
+        let mut counts: Vec<usize> = vec![0usize; usize::from(u16::MAX) + 1];
         let indices = self.positions(query);
-        let tokens: Vec<u16> = indices.iter()
+
+        indices.iter()
             .map(|&index| {
+                // Get index of token directly after query
+                // TODO LQ handle end of line
                 let usize_index = index as usize + query.len();
                 self.text.get(usize_index).copied()
             })
-            .filter_map(|x| x)
-            .collect();
+            .filter_map(|char| char)
+            .filter(|&char| char != utf16!("$")[0])
+            .for_each(|char| counts[usize::from(char)] += 1);
 
-        let counts = bincount(&tokens);
         counts
     }
+
+    /// Sample a character with probability proportional to its frequency succeeding the query.
+    pub fn sample(&self, query: &[u16]) -> u16 {
+        let counts: Vec<usize> = self.bincount_next_tokens(query);
+        
+        let dist = WeightedIndex::new(&counts).unwrap();
+        let mut rng = thread_rng();
+
+        let sampled_index = dist.sample(&mut rng);
+        sampled_index as u16
+    }
+
+
 }
 
 impl fmt::Debug for SuffixTable {
@@ -237,22 +255,4 @@ where
         }
     }
     left
-}
-
-fn bincount(nums: &[u16]) -> Vec<usize> {
-    let mut counts: Vec<usize> = vec![0usize; usize::from(u16::MAX) + 1];
-    for &num in nums {
-        counts[usize::from(num)] += 1;
-    }
-    counts
-}
-
-pub fn sample(counts: &[usize]) -> u16 {
-    assert!(counts.len() <= u16::MAX as usize + 1, "counts exceeds u16::MAX");
-    
-    let dist = WeightedIndex::new(counts).unwrap();
-    let mut rng = thread_rng();
-
-    let sampled_index = dist.sample(&mut rng);
-    sampled_index as u16
 }

@@ -149,25 +149,34 @@ fn prop_positions() {
 }
 
 #[test]
-fn next_token_counts_exists() {
+fn bincount_next_tokens_exists() {
     let sa = sais("aaab");
     
     let query = utf16!("a");
     let a_index = utf16!("a")[0] as usize;
     let b_index = utf16!("b")[0] as usize;
 
-    assert_eq!(2, sa.next_token_counts(query)[a_index]);
-    assert_eq!(1, sa.next_token_counts(query)[b_index]);
+    assert_eq!(2, sa.bincount_next_tokens(query)[a_index]);
+    assert_eq!(1, sa.bincount_next_tokens(query)[b_index]);
 }
 
-use tokengrams::table::sample; // Import the function
+// End of line character is not counted
+#[test]
+fn bincount_eol() {
+    let sa = sais("a$");
+    
+    let query = utf16!("a");
+    let a_index = utf16!("a")[0] as usize;
+    let dollar_index = utf16!("&")[0] as usize;
+
+    assert_eq!(0, sa.bincount_next_tokens(query)[dollar_index]);
+}
 
 #[test]
 fn sample_exists() {
     let sa = sais("ab");
-    let counts = sa.next_token_counts(utf16!("a"));
     let b_index = utf16!("b")[0];
 
-    let token = sample(&counts);
+    let token = sa.sample(utf16!("a"));
     assert_eq!(token, b_index);
 }
