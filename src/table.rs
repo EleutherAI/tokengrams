@@ -210,15 +210,24 @@ where
     }
 
     /// Sample a character with probability proportional to its frequency succeeding the query.
-    pub fn sample(&self, query: &[u16]) -> Result<u16> {
-        let counts: Vec<usize> = self.bincount_next_tokens(query);
-        
-        let dist = WeightedIndex::new(&counts)?;
+    pub fn sample_ngrams(&self, query: &[u16], n: u16, k: u16) -> Result<Vec<u16>> {
         let mut rng = thread_rng();
+        let mut sequence = Vec::from(query);
 
-        let sampled_index = dist.sample(&mut rng);
-        Ok(sampled_index as u16)
+        for _ in 0..k {
+            let start = sequence.len().saturating_sub(n as usize);
+            let prev = &sequence[start..];
+
+            let counts: Vec<usize> = self.bincount_next_tokens(prev);
+            let dist = WeightedIndex::new(&counts)?;
+            let sampled_index = dist.sample(&mut rng);
+
+            sequence.push(sampled_index as u16);
+        }
+
+        Ok(sequence)
     }
+
 
 
 }

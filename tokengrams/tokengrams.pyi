@@ -35,5 +35,6 @@ class MemmapIndex:
     def count(self, query: list[int]) -> int:
         """Count the number of occurrences of a query in the index."""
 
-    def sample(self, query: list[int]) -> int:
-        """Sample a character with a probability corresponding to the number of occurrences directly after the query."""    
+    def sample_ngrams(self, query: list[int], n: int, k: int, batch: int = 1) -> int:
+        """Sample k characters with probability corresponding to the number of occurrences directly after the previous n characters."""    
+   
