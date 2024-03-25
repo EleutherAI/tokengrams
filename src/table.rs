@@ -1,18 +1,3 @@
-/* This code is almost entirely based on suffix from BurntSushi. The original
-* program was licensed under the MIT license. We have modified it for
-* for two reasons:
-*
-* 1. The original implementation used u32 indices to point into the
-*    suffix array. This is smaller and fairly cache efficient, but here
-*    in the Real World we have to work with Big Data and our datasets
-*    are bigger than 2^32 bytes. So we have to work with u64 instead.
-*
-* 2. The original implementation had a utf8 interface. This is very
-*    convenient if you're working with strings, but we are working with
-*    byte arrays almost exclusively, and so just cut out the strings.
-*
-* When the comments below contradict these two statements, that's why.
-*/
 extern crate utf16_literal;
 
 use rayon::prelude::*;
@@ -20,12 +5,6 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Deref, u64};
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
-///
-/// This is distinct from a suffix array in that it *only* contains
-/// suffix indices. It has no "enhanced" information like the inverse suffix
-/// table or least-common-prefix lengths (LCP array). This representation
-/// limits what you can do (and how fast), but it uses very little memory
-/// (4 bytes per character in the text).
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
     text: T,
