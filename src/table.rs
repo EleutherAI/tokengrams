@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Deref, u64};
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::thread_rng;
-use utf16_literal::utf16;
+use anyhow::Result;
 
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
@@ -196,29 +196,28 @@ where
         let mut counts: Vec<usize> = vec![0usize; usize::from(u16::MAX) + 1];
         let indices = self.positions(query);
 
-        indices.iter()
-            .map(|&index| {
-                // Get index of token directly after query
-                // TODO LQ handle end of line
-                let usize_index = index as usize + query.len();
-                self.text.get(usize_index).copied()
-            })
-            .filter_map(|char| char)
-            .filter(|&char| char != utf16!("$")[0])
-            .for_each(|char| counts[usize::from(char)] += 1);
+        for &index in indices {
+            // Get index of token directly after query
+            let usize_index = index as usize + query.len();
+
+            if usize_index < self.text.len() {
+                let char = self.text[usize_index];
+                counts[char as usize] += 1;
+            }   
+        }
 
         counts
     }
 
     /// Sample a character with probability proportional to its frequency succeeding the query.
-    pub fn sample(&self, query: &[u16]) -> u16 {
+    pub fn sample(&self, query: &[u16]) -> Result<u16> {
         let counts: Vec<usize> = self.bincount_next_tokens(query);
         
-        let dist = WeightedIndex::new(&counts).unwrap();
+        let dist = WeightedIndex::new(&counts)?;
         let mut rng = thread_rng();
 
         let sampled_index = dist.sample(&mut rng);
-        sampled_index as u16
+        Ok(sampled_index as u16)
     }
 
 

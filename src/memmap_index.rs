@@ -1,4 +1,5 @@
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
+use pyo3::exceptions::PyValueError;
 //use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
@@ -72,7 +73,8 @@ impl MemmapIndex {
         self.table.positions(&query).len()
     }
 
-    fn sample(&self, query: Vec<u16>) -> u16 {
+    fn sample(&self, query: Vec<u16>) -> Result<u16, PyErr> {
         self.table.sample(&query)
+            .map_err(|error| PyValueError::new_err(error.to_string()))  
     }
 }

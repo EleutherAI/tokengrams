@@ -1,4 +1,5 @@
 use bincode::{deserialize, serialize};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::fs::File;
 use std::io::Read;
@@ -53,10 +54,11 @@ impl InMemoryIndex {
         self.table.positions(&query).len()
     }
 
-    fn sample(&self, query: Vec<u16>) -> u16 {
+    fn sample(&self, query: Vec<u16>) -> Result<u16, PyErr> {
         self.table.sample(&query)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
     }
-    
+
     fn save(&self, path: String) -> PyResult<()> {
         // TODO: handle errors here
         let bytes = serialize(&self.table).unwrap();

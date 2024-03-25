@@ -178,5 +178,5 @@ fn sample_exists() {
     let b_index = utf16!("b")[0];
 
     let token = sa.sample(utf16!("a"));
-    assert_eq!(token, b_index);
+    assert_eq!(token.unwrap(), b_index);
 }
