@@ -54,8 +54,8 @@ impl InMemoryIndex {
         self.table.positions(&query).len()
     }
 
-    fn sample_ngrams(&self, query: Vec<u16>, n: u16, k: u16) -> Result<Vec<u16>, PyErr> {
-        self.table.sample_ngrams(&query, n, k)
+    fn sample(&self, query: Vec<u16>, n: u16, k: u16) -> Result<Vec<u16>, PyErr> {
+        self.table.sample(&query, n, k)
             .map_err(|error| PyValueError::new_err(error.to_string()))  
     }
 

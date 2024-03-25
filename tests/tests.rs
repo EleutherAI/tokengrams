@@ -161,12 +161,12 @@ fn bincount_next_tokens_exists() {
 }
 
 #[test]
-fn sample_ngrams_exists() {
+fn sample_exists() {
     let sa = sais("ab");
 
     let query = utf16!("a");
     let b_index = utf16!("b")[0];
 
-    let token = sa.sample_ngrams(query, 2, 1);
+    let token = sa.sample(query, 2, 1);
     assert_eq!(*token.unwrap().last().unwrap(), b_index);
 }

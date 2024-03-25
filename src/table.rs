@@ -210,7 +210,7 @@ where
     }
 
     /// Sample a character with probability proportional to its frequency succeeding the query.
-    pub fn sample_ngrams(&self, query: &[u16], n: u16, k: u16) -> Result<Vec<u16>> {
+    pub fn sample(&self, query: &[u16], n: u16, k: u16) -> Result<Vec<u16>> {
         let mut rng = thread_rng();
         let mut sequence = Vec::from(query);
 
