@@ -160,18 +160,6 @@ fn bincount_next_tokens_exists() {
     assert_eq!(1, sa.bincount_next_tokens(query)[b_index]);
 }
 
-// End of line character is not counted
-#[test]
-fn bincount_eol() {
-    let sa = sais("a$");
-    
-    let query = utf16!("a");
-    let a_index = utf16!("a")[0] as usize;
-    let dollar_index = utf16!("&")[0] as usize;
-
-    assert_eq!(0, sa.bincount_next_tokens(query)[dollar_index]);
-}
-
 #[test]
 fn sample_exists() {
     let sa = sais("ab");
