@@ -171,20 +171,17 @@ where
     }
 
     /// Returns an unordered list of counts of token values that succeed `query`.
-    pub fn bincount_next_tokens(&self, query: &[u16]) -> Vec<usize> {
-        let mut counts: Vec<usize> = vec![0usize; usize::from(u16::MAX) + 1];
-        let indices = self.positions(query);
+    /// Counts all tokens if query is empty.
+    pub fn bincount_next_tokens(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+        let mut counts: Vec<usize> = vec![0usize; vocab.unwrap_or(u16::MAX) as usize + 1];
+        let mut suffixed_query = query.to_vec();
+        for i in 0..counts.len() {
+            suffixed_query.push(i as u16);
 
-        for &index in indices {
-            // Get index of token directly after query
-            let usize_index = index as usize + query.len();
-
-            if usize_index < self.text.len() {
-                let char = self.text[usize_index];
-                counts[char as usize] += 1;
-            }   
+            let positions = self.positions(&suffixed_query);
+            counts[i] = positions.len();
+            suffixed_query.pop();
         }
-
         counts
     }
 
@@ -197,7 +194,7 @@ where
             let start = sequence.len().saturating_sub(n as usize);
             let prev = &sequence[start..];
 
-            let counts: Vec<usize> = self.bincount_next_tokens(prev);
+            let counts: Vec<usize> = self.bincount_next_tokens(prev, Option::None);
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
 
@@ -206,9 +203,6 @@ where
 
         Ok(sequence)
     }
-
-
-
 }
 
 impl fmt::Debug for SuffixTable {

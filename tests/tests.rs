@@ -156,8 +156,20 @@ fn bincount_next_tokens_exists() {
     let a_index = utf16!("a")[0] as usize;
     let b_index = utf16!("b")[0] as usize;
 
-    assert_eq!(2, sa.bincount_next_tokens(query)[a_index]);
-    assert_eq!(1, sa.bincount_next_tokens(query)[b_index]);
+    assert_eq!(2, sa.bincount_next_tokens(query, Option::None)[a_index]);
+    assert_eq!(1, sa.bincount_next_tokens(query, Option::None)[b_index]);
+}
+
+#[test]
+fn bincount_next_tokens_empty_query() {
+    let sa = sais("aaab");
+    
+    let query = utf16!("");
+    let a_index = utf16!("a")[0] as usize;
+    let b_index = utf16!("b")[0] as usize;
+
+    assert_eq!(3, sa.bincount_next_tokens(query, Option::None)[a_index]);
+    assert_eq!(1, sa.bincount_next_tokens(query, Option::None)[b_index]);
 }
 
 #[test]
