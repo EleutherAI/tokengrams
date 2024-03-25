@@ -192,9 +192,15 @@ where
     }
 
     /// Returns an unordered list of counts of token values that succeed `query`.
+    /// Counts all tokens if query is empty.
     pub fn bincount_next_tokens(&self, query: &[u16]) -> Vec<usize> {
         let mut counts: Vec<usize> = vec![0usize; usize::from(u16::MAX) + 1];
-        let indices = self.positions(query);
+        
+        let indices = if query.len() == 0 {
+            self.table.as_ref()
+        } else {
+            self.positions(query)
+        };
 
         for &index in indices {
             // Get index of token directly after query
