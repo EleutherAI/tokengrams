@@ -191,15 +191,57 @@ where
         }
     }
 
+    pub fn boundaries(&self, query: &[u16]) -> (usize, usize) { // a, aa
+        if self.text.len() == 0
+            || query.len() == 0
+            || (query < self.suffix(0) && !self.suffix(0).starts_with(query))
+            || query > self.suffix(self.len() - 1)
+        {
+            return (0, self.table.len());
+        }
+
+        let start = binary_search(&self.table, |&sufi| query <= &self.text[sufi as usize..]);
+        let end = start
+            + binary_search(&self.table[start..], |&sufi| {
+                !self.text[sufi as usize..].starts_with(query)
+            });
+
+        (start, end)
+    }
+
+    fn range_positions(&self, query: &[u16], range_start: usize, range_end: usize) -> &[u64] {
+        if self.text.len() == 0
+            || query.len() == 0
+            || (query < self.suffix(0 + range_start) && !self.suffix(0 + range_start).starts_with(query))
+            || query > self.suffix(std::cmp::max(0, range_end - 1))
+        {
+            return &[];
+        }
+
+        let start = binary_search(&self.table[range_start..range_end], |&sufi| query <= &self.text[sufi as usize..]);
+        let end = start
+            + binary_search(&self.table[range_start + start..range_end], |&sufi| {
+                !self.text[sufi as usize..].starts_with(query)
+            });
+    
+        if start > end {
+            &[]
+        } else {
+            &self.table[range_start + start..range_start + end]
+        }
+    }
+
     /// Returns an unordered list of counts of token values that succeed `query`.
     /// Counts all tokens if query is empty.
     pub fn bincount_next_tokens(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         let mut counts: Vec<usize> = vec![0usize; vocab.unwrap_or(u16::MAX) as usize + 1];
         let mut suffixed_query = query.to_vec();
+        let (range_start, range_end) = self.boundaries(query);
+
         for i in 0..counts.len() {
             suffixed_query.push(i as u16);
-
-            let positions = self.positions(&suffixed_query);
+            
+            let positions = self.range_positions(&suffixed_query, range_start, range_end);
             counts[i] = positions.len();
             suffixed_query.pop();
         }
@@ -215,7 +257,7 @@ where
             // look at the previous (n - 1) characters to predict the n-gram completion
             let start = sequence.len().saturating_sub(n as usize - 1);
             let prev = &sequence[start..];
-
+            
             let counts: Vec<usize> = self.bincount_next_tokens(prev, Option::None);
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
