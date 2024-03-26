@@ -85,8 +85,15 @@ impl MemmapIndex {
         self.table.positions(&query).len()
     }
 
-    fn sample(&self, query: Vec<u16>, n: u16, k: u16) -> Result<Vec<u16>, PyErr> {
+    fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
         self.table.sample(&query, n, k)
             .map_err(|error| PyValueError::new_err(error.to_string()))  
     }
+
+    fn batch_sample(&self, query: Vec<u16>, n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>, PyErr> { // Result<>, PyErr> {
+        self.table.batch_sample(&query, n, k, num_samples)
+            .map_err(|error| PyValueError::new_err(error.to_string()))  
+    }
+
+    
 }

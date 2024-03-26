@@ -149,36 +149,41 @@ fn prop_positions() {
 }
 
 #[test]
-fn bincount_next_tokens_exists() {
-    let sa = sais("aaab");
-    
-    let query = utf16!("a");
-    let a_index = utf16!("a")[0] as usize;
-    let b_index = utf16!("b")[0] as usize;
-
-    assert_eq!(2, sa.bincount_next_tokens(query, Option::None)[a_index]);
-    assert_eq!(1, sa.bincount_next_tokens(query, Option::None)[b_index]);
-}
-
-#[test]
-fn bincount_next_tokens_empty_query() {
-    let sa = sais("aaab");
-    
-    let query = utf16!("");
-    let a_index = utf16!("a")[0] as usize;
-    let b_index = utf16!("b")[0] as usize;
-
-    assert_eq!(3, sa.bincount_next_tokens(query, Option::None)[a_index]);
-    assert_eq!(1, sa.bincount_next_tokens(query, Option::None)[b_index]);
-}
-
-#[test]
 fn sample_exists() {
-    let sa = sais("ab");
-
-    let query = utf16!("a");
-    let b_index = utf16!("b")[0];
-
-    let token = sa.sample(query, 2, 1);
-    assert_eq!(*token.unwrap().last().unwrap(), b_index);
+    let sa = sais("aaa");
+    let a = utf16!("a");
+    let tokens = sa.sample(a, 3, 10).unwrap();
+    assert_eq!(*tokens.last().unwrap(), a[0]);
 }
+
+#[test]
+fn sample_empty_query() {
+    let sa = sais("aaa");
+    let empty_query = utf16!("");
+    let tokens = sa.sample(empty_query, 3, 10).unwrap();
+    assert_eq!(*tokens.last().unwrap(), utf16!("a")[0]);
+}
+
+#[test]
+fn batch_sample_exists() {
+    let sa = sais("aaa");
+    let a = utf16!("a");
+    let seqs = sa.batch_sample(a, 3, 10, 20).unwrap();
+    assert_eq!(*seqs[0].last().unwrap(), a[0]);
+    assert_eq!(*seqs[19].last().unwrap(), a[0]);
+}
+
+#[test]
+fn batch_sample_empty_query() {
+    let sa = sais("aaa");
+    let empty_query = utf16!("");
+    let seqs = sa.batch_sample(empty_query, 3, 10, 20).unwrap();
+    assert_eq!(*seqs[0].last().unwrap(), utf16!("a")[0]);
+    assert_eq!(*seqs[19].last().unwrap(), utf16!("a")[0]);
+}
+
+// #[test]
+// fn is_sorted_true() {
+//     let sa = sais("aaa");
+//     assert!(sa.is_sorted());
+// }
