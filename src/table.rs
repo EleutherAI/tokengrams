@@ -212,7 +212,8 @@ where
         let mut sequence = Vec::from(query);
 
         for _ in 0..k {
-            let start = sequence.len().saturating_sub(n as usize);
+            // look at the previous (n - 1) characters to predict the n-gram completion
+            let start = sequence.len().saturating_sub(n as usize - 1);
             let prev = &sequence[start..];
 
             let counts: Vec<usize> = self.bincount_next_tokens(prev, Option::None);
