@@ -61,7 +61,9 @@ impl InMemoryIndex {
 
     fn batch_sample(&self, query: Vec<u16>, n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>, PyErr> {
         self.table.batch_sample(&query, n, k, num_samples)
-            .map_err(|error| PyValueError::new_err(error.to_string()))  
+
+    fn is_sorted(&self) -> bool {
+        self.table.is_sorted()
     }
 
     fn save(&self, path: String) -> PyResult<()> {

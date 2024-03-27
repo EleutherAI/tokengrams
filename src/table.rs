@@ -255,13 +255,12 @@ where
             .collect()
     }
 
-    // Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
-    // pub fn is_sorted(&self) -> bool {
-    //     self.table.windows(2).all(|pair| {
-    //         self.suffix(pair[0] as usize) < self.suffix(pair[1] as usize)
-    //     })
-    // }
-
+    /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
+    pub fn is_sorted(&self) -> bool {
+        self.table.windows(2).all(|pair| {
+            &self.text[pair[0] as usize..] <= &self.text[pair[1] as usize..]
+        })
+    }
 }
 
 impl fmt::Debug for SuffixTable {
