@@ -83,5 +83,7 @@ impl MemmapIndex {
             .map_err(|error| PyValueError::new_err(error.to_string()))  
     }
 
-    
+    fn is_sorted(&self) -> bool {
+        self.table.is_sorted()
+    }
 }

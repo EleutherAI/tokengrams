@@ -185,5 +185,9 @@ fn batch_sample_empty_query() {
 // #[test]
 // fn is_sorted_true() {
 //     let sa = sais("aaa");
-//     assert!(sa.is_sorted());
-// }
+
+#[test]
+fn is_sorted_true() {
+    let sa = sais("bbbaaabbb");
+    assert!(sa.is_sorted());
+}
