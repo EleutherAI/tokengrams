@@ -65,8 +65,8 @@ impl SuffixTable<Box<[u16]>, Box<[u64]>> {
 
 impl<T, U> SuffixTable<T, U>
 where
-    T: Deref<Target = [u16]>,
-    U: Deref<Target = [u64]>,
+    T: Deref<Target = [u16]> + Sync,
+    U: Deref<Target = [u64]> + Sync,
 {
     pub fn from_parts(text: T, table: U) -> Self {
         SuffixTable { text, table }
@@ -233,7 +233,7 @@ where
 
     /// Returns an unordered list of counts of token values that succeed `query`.
     /// Counts all tokens if query is empty.
-    pub fn bincount_next_tokens(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+    fn bincount_next_tokens(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         let mut counts: Vec<usize> = vec![0usize; vocab.unwrap_or(u16::MAX) as usize + 1];
         let mut suffixed_query = query.to_vec();
         let (range_start, range_end) = self.boundaries(query);
@@ -249,7 +249,7 @@ where
     }
 
     /// Sample a character with probability proportional to its frequency succeeding the query.
-    pub fn sample(&self, query: &[u16], n: u16, k: u16) -> Result<Vec<u16>> {
+    pub fn sample(&self, query: &[u16], n: usize, k: usize) -> Result<Vec<u16>> {
         let mut rng = thread_rng();
         let mut sequence = Vec::from(query);
 
@@ -267,6 +267,22 @@ where
 
         Ok(sequence)
     }
+
+    pub fn batch_sample(&self, query: &[u16], n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>> {
+        (0..num_samples).into_par_iter()
+            .map(|_| {
+                self.sample(query, n, k)
+            })
+            .collect()
+    }
+
+    // Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
+    // pub fn is_sorted(&self) -> bool {
+    //     self.table.windows(2).all(|pair| {
+    //         self.suffix(pair[0] as usize) < self.suffix(pair[1] as usize)
+    //     })
+    // }
+
 }
 
 impl fmt::Debug for SuffixTable {
@@ -300,4 +316,38 @@ where
         }
     }
     left
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use utf16_literal::utf16;
+
+    fn sais(text: &str) -> SuffixTable {
+        SuffixTable::new(text.encode_utf16().collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn bincount_next_tokens_exists() {
+        let sa = sais("aaab");
+        
+        let query = utf16!("a");
+        let a_index = utf16!("a")[0] as usize;
+        let b_index = utf16!("b")[0] as usize;
+
+        assert_eq!(2, sa.bincount_next_tokens(query, Option::None)[a_index]);
+        assert_eq!(1, sa.bincount_next_tokens(query, Option::None)[b_index]);
+    }
+
+    #[test]
+    fn bincount_next_tokens_empty_query() {
+        let sa = sais("aaab");
+        
+        let query = utf16!("");
+        let a_index = utf16!("a")[0] as usize;
+        let b_index = utf16!("b")[0] as usize;
+
+        assert_eq!(3, sa.bincount_next_tokens(query, Option::None)[a_index]);
+        assert_eq!(1, sa.bincount_next_tokens(query, Option::None)[b_index]);
+    }
 }
