@@ -54,6 +54,10 @@ impl InMemoryIndex {
         self.table.positions(&query).len()
     }
 
+    fn batch_bincount_next_tokens(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
+        self.table.batch_bincount_next_tokens(&queries, vocab)
+    }
+
     fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
         self.table.sample(&query, n, k)
             .map_err(|error| PyValueError::new_err(error.to_string()))  

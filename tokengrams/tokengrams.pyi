@@ -18,6 +18,9 @@ class InMemoryIndex:
         """Sample k characters with probability corresponding to the number of 
         occurrences directly after the previous n characters."""    
    
+    def batch_bincount_next_tokens(self, query: list[list[int]], vocab: int | None) -> list[list[int]]:
+        """Count the number of occurrences of each token directly after the query"""
+
     def batch_sample(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
         """Sample num_sample sequences of k characters with probability corresponding 
         to the number of occurrences directly after the previous n characters."""    
@@ -41,6 +44,9 @@ class MemmapIndex:
     
     def count(self, query: list[int]) -> int:
         """Count the number of occurrences of a query in the index."""
+
+    def batch_bincount_next_tokens(self, query: list[list[int]], vocab: int | None) -> list[list[int]]:
+        """Count the number of occurrences of each token directly after the query"""
 
     def sample(self, query: list[int], n: int, k: int) -> list[int]:
         """Sample k characters with probability corresponding to the number of 

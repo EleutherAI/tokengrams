@@ -248,6 +248,15 @@ where
         counts
     }
 
+    pub fn batch_bincount_next_tokens(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
+        let mut result: Vec<Vec<usize>> = vec![];
+        for query in queries {
+            let counts = self.bincount_next_tokens(query, vocab);
+            result.push(counts);
+        }
+        result
+    }
+
     /// Sample a character with probability proportional to its frequency succeeding the query.
     pub fn sample(&self, query: &[u16], n: usize, k: usize) -> Result<Vec<u16>> {
         let mut rng = thread_rng();
