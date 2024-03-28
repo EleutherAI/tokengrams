@@ -149,7 +149,7 @@ fn prop_positions() {
 }
 
 #[test]
-fn sample_exists() {
+fn sample_next_exists() {
     let sa = sais("aaa");
     let a = utf16!("a");
     let tokens = sa.sample(a, 3, 10).unwrap();
@@ -157,7 +157,7 @@ fn sample_exists() {
 }
 
 #[test]
-fn sample_empty_query() {
+fn sample_empty_query_exists() {
     let sa = sais("aaa");
     let empty_query = utf16!("");
     let tokens = sa.sample(empty_query, 3, 10).unwrap();
@@ -165,7 +165,7 @@ fn sample_empty_query() {
 }
 
 #[test]
-fn batch_sample_exists() {
+fn batch_sample_next_exists() {
     let sa = sais("aaa");
     let a = utf16!("a");
     let seqs = sa.batch_sample(a, 3, 10, 20).unwrap();
@@ -174,7 +174,7 @@ fn batch_sample_exists() {
 }
 
 #[test]
-fn batch_sample_empty_query() {
+fn batch_sample_empty_query_exists() {
     let sa = sais("aaa");
     let empty_query = utf16!("");
     let seqs = sa.batch_sample(empty_query, 3, 10, 20).unwrap();
@@ -182,12 +182,8 @@ fn batch_sample_empty_query() {
     assert_eq!(*seqs[19].last().unwrap(), utf16!("a")[0]);
 }
 
-// #[test]
-// fn is_sorted_true() {
-//     let sa = sais("aaa");
-
 #[test]
 fn is_sorted_true() {
-    let sa = sais("bbbaaabbb");
+    let sa = sais("aba");
     assert!(sa.is_sorted());
 }
