@@ -14,20 +14,22 @@ class InMemoryIndex:
     def count(self, query: list[int]) -> int:
         """Count the number of occurrences of a query in the index."""
 
-    def sample(self, query: list[int], n: int, k: int) -> list[int]:
-        """Sample k characters with probability corresponding to the number of 
-        occurrences directly after the previous n characters."""    
-   
-    def batch_bincount_next_tokens(self, query: list[list[int]], vocab: int | None) -> list[list[int]]:
-        """Count the number of occurrences of each token directly after the query"""
+    def batch_next_token_counts(self, query: list[list[int]], vocab: int | None) -> list[list[int]]:
+        """Count the occurrences of each token that directly follows each query sequence."""
 
+    def sample(self, query: list[int], n: int, k: int) -> list[int]:
+        """Autoregressively sample k characters from conditional distributions based 
+        on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
+        (n - 1) characters all available characters are used.""" 
+    
     def batch_sample(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
-        """Sample num_sample sequences of k characters with probability corresponding 
-        to the number of occurrences directly after the previous n characters."""    
+        """Autoregressively sample num_samples of k characters each from conditional distributions based 
+        on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
+        (n - 1) characters all available characters are used.""" 
 
     def is_sorted(self) -> bool:
-        """Check if the suffix table is sorted lexicographically. 
-        This is always true for valid suffix tables."""
+        """Check if the index's suffix table is sorted lexicographically. 
+        This is always true for valid indices."""
 
 class MemmapIndex:
     """An n-gram index backed by a memory-mapped file."""
@@ -45,17 +47,19 @@ class MemmapIndex:
     def count(self, query: list[int]) -> int:
         """Count the number of occurrences of a query in the index."""
 
-    def batch_bincount_next_tokens(self, query: list[list[int]], vocab: int | None) -> list[list[int]]:
-        """Count the number of occurrences of each token directly after the query"""
+    def batch_next_token_counts(self, query: list[list[int]], vocab: int | None) -> list[list[int]]:
+        """Count the occurrences of each token that directly follows each query sequence."""
 
     def sample(self, query: list[int], n: int, k: int) -> list[int]:
-        """Sample k characters with probability corresponding to the number of 
-        occurrences directly after the previous n characters."""    
+        """Autoregressively k characters from conditional distributions based 
+        on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
+        (n - 1) characters all available characters are used.""" 
    
     def batch_sample(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
-        """Sample num_sample sequences of k characters with probability corresponding 
-        to the number of occurrences directly after the previous n characters."""    
+        """Autoregressively samples num_samples of k characters each from conditional distributions based 
+        on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
+        (n - 1) characters all available characters are used."""
    
     def is_sorted(self) -> bool:
-        """Check if the suffix table is sorted lexicographically. 
-        This is always true for valid suffix tables."""
+        """Check if the index's suffix table is sorted lexicographically. 
+        This is always true for valid indices."""

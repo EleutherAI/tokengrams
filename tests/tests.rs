@@ -149,7 +149,7 @@ fn prop_positions() {
 }
 
 #[test]
-fn sample_next_exists() {
+fn sample_query_exists() {
     let sa = sais("aaa");
     let a = utf16!("a");
     let tokens = sa.sample(a, 3, 10).unwrap();
@@ -165,7 +165,7 @@ fn sample_empty_query_exists() {
 }
 
 #[test]
-fn batch_sample_next_exists() {
+fn batch_sample_query_exists() {
     let sa = sais("aaa");
     let a = utf16!("a");
     let seqs = sa.batch_sample(a, 3, 10, 20).unwrap();
@@ -183,7 +183,22 @@ fn batch_sample_empty_query_exists() {
 }
 
 #[test]
-fn is_sorted_true() {
-    let sa = sais("aba");
-    assert!(sa.is_sorted());
+fn prop_sample() {
+    fn prop(s: String) -> bool {
+        let s = s.encode_utf16().collect::<Vec<_>>();
+        if s.len() < 2 {
+            return true;
+        }
+        
+        let table = SuffixTable::new(s.clone());
+
+        let query = match s.get(0..1) {
+            Some(slice) => slice,
+            None => &[],
+        };
+        let got = table.sample(query, 2, 1).unwrap();
+        s.contains(got.first().unwrap())
+    }
+
+    qc(prop as fn(String) -> bool);
 }

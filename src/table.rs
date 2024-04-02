@@ -170,7 +170,8 @@ where
         }
     }
 
-    pub fn boundaries(&self, query: &[u16]) -> (usize, usize) { // a, aa
+    /// Returns the start and end indices of query matches in text
+    fn boundaries(&self, query: &[u16]) -> (usize, usize) {
         if self.text.len() == 0
             || query.len() == 0
             || (query < self.suffix(0) && !self.suffix(0).starts_with(query))
@@ -188,6 +189,8 @@ where
         (start, end)
     }
 
+    /// Returns an unordered list of positions where `query` starts in `text`, limiting the search to a
+    /// specified range of the suffix table.
     fn range_positions(&self, query: &[u16], range_start: usize, range_end: usize) -> &[u64] {
         if self.text.len() == 0
             || query.len() == 0
@@ -212,7 +215,7 @@ where
 
     /// Returns an unordered list of counts of token values that succeed `query`.
     /// Counts all tokens if query is empty.
-    fn bincount_next_tokens(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+    fn next_token_counts(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         let mut counts: Vec<usize> = vec![0usize; vocab.unwrap_or(u16::MAX) as usize + 1];
         let mut suffixed_query = query.to_vec();
         let (range_start, range_end) = self.boundaries(query);
@@ -227,15 +230,17 @@ where
         counts
     }
 
-    pub fn batch_bincount_next_tokens(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
+    /// Count the occurrences of each token that directly follows each query sequence.
+    pub fn batch_next_token_counts(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
         queries.into_par_iter()
             .map(|query| {
-                self.bincount_next_tokens(query, vocab)
+                self.next_token_counts(query, vocab)
             })
             .collect()
     }
 
-    /// Sample a character with probability proportional to its frequency succeeding the query.
+    /// Autoregressively sample k characters from a conditional distribution based 
+    /// on the previous (n - 1) characters (n-gram prefix) in the sequence.
     pub fn sample(&self, query: &[u16], n: usize, k: usize) -> Result<Vec<u16>> {
         let mut rng = thread_rng();
         let mut sequence = Vec::from(query);
@@ -245,7 +250,7 @@ where
             let start = sequence.len().saturating_sub(n as usize - 1);
             let prev = &sequence[start..];
             
-            let counts: Vec<usize> = self.bincount_next_tokens(prev, Option::None);
+            let counts: Vec<usize> = self.next_token_counts(prev, Option::None);
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
 
@@ -255,6 +260,8 @@ where
         Ok(sequence)
     }
 
+    /// Autoregressively samples num_samples of k characters each from conditional distributions based 
+    /// on the previous (n - 1) characters (n-gram prefix) in the sequence."""
     pub fn batch_sample(&self, query: &[u16], n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>> {
         (0..num_samples).into_par_iter()
             .map(|_| {
@@ -314,38 +321,38 @@ mod tests {
     }
 
     #[test]
-    fn bincount_next_tokens_exists() {
+    fn next_token_counts_exists() {
         let sa = sais("aaab");
         
         let query = utf16!("a");
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(2, sa.bincount_next_tokens(query, Option::None)[a_index]);
-        assert_eq!(1, sa.bincount_next_tokens(query, Option::None)[b_index]);
+        assert_eq!(2, sa.next_token_counts(query, Option::None)[a_index]);
+        assert_eq!(1, sa.next_token_counts(query, Option::None)[b_index]);
     }
 
     #[test]
-    fn bincount_next_tokens_empty_query() {
+    fn next_token_counts_empty_query() {
         let sa = sais("aaab");
         
         let query = utf16!("");
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(3, sa.bincount_next_tokens(query, Option::None)[a_index]);
-        assert_eq!(1, sa.bincount_next_tokens(query, Option::None)[b_index]);
+        assert_eq!(3, sa.next_token_counts(query, Option::None)[a_index]);
+        assert_eq!(1, sa.next_token_counts(query, Option::None)[b_index]);
     }
 
     #[test]
-    fn batch_bincount_next_tokens() {
+    fn batch_next_token_counts_exists() {
         let sa = sais("aaab");
         
         let queries: Vec<Vec<u16>> = vec![vec![utf16!("a")[0]; 1]; 10_000];
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(2, sa.batch_bincount_next_tokens(&queries, Option::None)[0][a_index]);
-        assert_eq!(1, sa.batch_bincount_next_tokens(&queries, Option::None)[0][b_index]);
+        assert_eq!(2, sa.batch_next_token_counts(&queries, Option::None)[0][a_index]);
+        assert_eq!(1, sa.batch_next_token_counts(&queries, Option::None)[0][b_index]);
     }
 }

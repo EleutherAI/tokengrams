@@ -85,8 +85,8 @@ impl MemmapIndex {
         self.table.positions(&query).len()
     }
 
-    fn batch_bincount_next_tokens(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
-        self.table.batch_bincount_next_tokens(&queries, vocab)
+    fn batch_next_token_counts(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
+        self.table.batch_next_token_counts(&queries, vocab)
     }
 
     fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
