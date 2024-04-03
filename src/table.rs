@@ -6,7 +6,7 @@ use std::{fmt, ops::Deref, u64};
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::thread_rng;
 use anyhow::Result;
-
+use crate::par_quicksort::par_sort_unstable_by_key;
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -19,7 +19,7 @@ pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
 impl SuffixTable<Box<[u16]>, Box<[u64]>> {
     /// Creates a new suffix table for `text` in `O(n log n)` time and `O(n)`
     /// space.
-    pub fn new<S>(src: S) -> Self
+    pub fn new<S>(src: S, verbose: bool) -> Self
     where
         S: Into<Box<[u16]>>,
     {
@@ -33,7 +33,7 @@ impl SuffixTable<Box<[u16]>, Box<[u64]>> {
         // sufficiently small inputs, so we don't need to worry about
         // parallelism overhead here.
         let mut table: Vec<_> = (0..text.len() as u64).collect();
-        table.par_sort_unstable_by_key(|&i| &text[i as usize..]);
+        par_sort_unstable_by_key(&mut table[..], |&i| &text[i as usize..], verbose);
 
         SuffixTable {
             text,
@@ -133,7 +133,7 @@ where
     /// use tokengrams::SuffixTable;
     /// use utf16_literal::utf16;
     ///
-    /// let sa = SuffixTable::new(utf16!("The quick brown fox was very quick.").to_vec());
+    /// let sa = SuffixTable::new(utf16!("The quick brown fox was very quick.").to_vec(), false);
     /// assert_eq!(sa.positions(utf16!("quick")), &[4, 29]);
     /// ```
     #[allow(dead_code)]
@@ -317,7 +317,7 @@ mod tests {
     use utf16_literal::utf16;
 
     fn sais(text: &str) -> SuffixTable {
-        SuffixTable::new(text.encode_utf16().collect::<Vec<_>>())
+        SuffixTable::new(text.encode_utf16().collect::<Vec<_>>(), false)
     }
 
     #[test]

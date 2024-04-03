@@ -6,7 +6,7 @@ use tokengrams::SuffixTable;
 use utf16_literal::utf16;
 
 fn sais(text: &str) -> SuffixTable {
-    SuffixTable::new(text.encode_utf16().collect::<Vec<_>>())
+    SuffixTable::new(text.encode_utf16().collect::<Vec<_>>(), false)
 }
 
 fn qc<T: Testable>(f: T) {
@@ -135,7 +135,7 @@ fn prop_contains() {
 fn prop_positions() {
     fn prop(s: String, c: u16) -> bool {
         let s = s.encode_utf16().collect::<Vec<_>>();
-        let table = SuffixTable::new(s.clone());
+        let table = SuffixTable::new(s.clone(), false);
 
         let got = table.positions(&[c]);
         for (i, c_) in s.into_iter().enumerate() {
@@ -168,7 +168,7 @@ fn sample_empty_query_exists() {
 fn batch_sample_query_exists() {
     let sa = sais("aaa");
     let a = utf16!("a");
-    let seqs = sa.batch_sample(a, 3, 10, 20).unwrap();
+    let seqs = sa.batch_sample(a, 3, 10, 2000).unwrap();
     assert_eq!(*seqs[0].last().unwrap(), a[0]);
     assert_eq!(*seqs[19].last().unwrap(), a[0]);
 }
@@ -177,7 +177,7 @@ fn batch_sample_query_exists() {
 fn batch_sample_empty_query_exists() {
     let sa = sais("aaa");
     let empty_query = utf16!("");
-    let seqs = sa.batch_sample(empty_query, 3, 10, 20).unwrap();
+    let seqs = sa.batch_sample(empty_query, 3, 10, 2000).unwrap();
     assert_eq!(*seqs[0].last().unwrap(), utf16!("a")[0]);
     assert_eq!(*seqs[19].last().unwrap(), utf16!("a")[0]);
 }
@@ -190,7 +190,7 @@ fn prop_sample() {
             return true;
         }
         
-        let table = SuffixTable::new(s.clone());
+        let table = SuffixTable::new(s.clone(), false);
 
         let query = match s.get(0..1) {
             Some(slice) => slice,
