@@ -96,7 +96,7 @@ where
     /// use tokengrams::SuffixTable;
     /// use utf16_literal::utf16;
     ///
-    /// let sa = SuffixTable::new(utf16!("The quick brown fox.").to_vec());
+    /// let sa = SuffixTable::new(utf16!("The quick brown fox.").to_vec(), false);
     /// assert!(sa.contains(utf16!("quick")));
     /// ```
     #[allow(dead_code)]
