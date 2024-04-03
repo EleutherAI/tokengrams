@@ -1,9 +1,11 @@
 pub mod mmap_slice;
 pub mod table;
 pub mod util;
+pub mod par_quicksort;
 
 pub use mmap_slice::MmapSlice;
 pub use table::SuffixTable;
+pub use par_quicksort::par_quicksort;
 
 /// Python bindings
 use pyo3::prelude::*;
