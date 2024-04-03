@@ -5,7 +5,6 @@ use std::time::Instant;
 
 use crate::mmap_slice::{MmapSlice, MmapSliceMut};
 use crate::table::SuffixTable;
-
 use crate::par_quicksort::par_sort_unstable_by_key;
 
 #[pyclass]

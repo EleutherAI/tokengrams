@@ -168,7 +168,7 @@ fn sample_empty_query_exists() {
 fn batch_sample_query_exists() {
     let sa = sais("aaa");
     let a = utf16!("a");
-    let seqs = sa.batch_sample(a, 3, 10, 2000).unwrap();
+    let seqs = sa.batch_sample(a, 3, 10, 20).unwrap();
     assert_eq!(*seqs[0].last().unwrap(), a[0]);
     assert_eq!(*seqs[19].last().unwrap(), a[0]);
 }
@@ -177,7 +177,7 @@ fn batch_sample_query_exists() {
 fn batch_sample_empty_query_exists() {
     let sa = sais("aaa");
     let empty_query = utf16!("");
-    let seqs = sa.batch_sample(empty_query, 3, 10, 2000).unwrap();
+    let seqs = sa.batch_sample(empty_query, 3, 10, 20).unwrap();
     assert_eq!(*seqs[0].last().unwrap(), utf16!("a")[0]);
     assert_eq!(*seqs[19].last().unwrap(), utf16!("a")[0]);
 }
