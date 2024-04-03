@@ -5,7 +5,7 @@ class InMemoryIndex:
         ...
     
     @staticmethod
-    def from_token_file(path: str, token_limit: int | None) -> "InMemoryIndex":
+    def from_token_file(path: str, token_limit: int | None, verbose: bool) -> "InMemoryIndex":
         """Construct a `InMemoryIndex` from a file containing raw little-endian tokens."""
 
     def contains(self, query: list[int]) -> bool:
@@ -41,7 +41,7 @@ class MemmapIndex:
         """Load a prebuilt memory-mapped index from a pair of files."""
 
     @staticmethod
-    def build(token_file: str, index_file: str) -> "MemmapIndex":
+    def build(token_file: str, index_file: str, verbose: bool) -> "MemmapIndex":
         """Build a memory-mapped index from a token file."""
     
     def contains(self, query: list[int]) -> bool:
