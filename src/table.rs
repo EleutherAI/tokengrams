@@ -250,7 +250,7 @@ where
             let start = sequence.len().saturating_sub(n as usize - 1);
             let prev = &sequence[start..];
             
-            let counts: Vec<usize> = self.next_token_counts(prev, Option::None);
+            let counts: Vec<usize> = self.next_token_counts(prev, None);
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
 
