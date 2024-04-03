@@ -1,4 +1,4 @@
-use indicatif::{ProgressBar, ProgressStyle};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::fs::{File, OpenOptions};
@@ -82,5 +82,27 @@ impl MemmapIndex {
 
     fn count(&self, query: Vec<u16>) -> usize {
         self.table.positions(&query).len()
+    }
+
+    pub fn positions(&self, query: Vec<u16>) -> Vec<u64> {
+        self.table.positions(&query).to_vec()
+    }
+
+    fn batch_next_token_counts(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
+        self.table.batch_next_token_counts(&queries, vocab)
+    }
+
+    fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
+        self.table.sample(&query, n, k)
+            .map_err(|error| PyValueError::new_err(error.to_string()))  
+    }
+
+    fn batch_sample(&self, query: Vec<u16>, n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>, PyErr> {
+        self.table.batch_sample(&query, n, k, num_samples)
+            .map_err(|error| PyValueError::new_err(error.to_string()))  
+    }
+
+    fn is_sorted(&self) -> bool {
+        self.table.is_sorted()
     }
 }

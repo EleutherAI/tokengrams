@@ -8,6 +8,8 @@ import numpy as np
 
 
 def check_gram_index(index: InMemoryIndex | MemmapIndex, tokens: list[int]):
+    assert index.is_sorted()
+
     # Check unigram counts
     for t in tokens:
         assert index.contains([t]) == (t in tokens)

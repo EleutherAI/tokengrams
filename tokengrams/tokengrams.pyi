@@ -12,8 +12,27 @@ class InMemoryIndex:
         """Check if `query` has nonzero count. Faster than `count(query) > 0`."""
     
     def count(self, query: list[int]) -> int:
-        """Count the number of occurrences of a query in the index."""
+        """Count the number of occurrences of `query` in the index."""
 
+    def positions(self, query: list[int]) -> list[int]:
+        """Returns an unordered list of positions where `query` starts in `text`."""
+
+    def batch_next_token_counts(self, queries: list[list[int]], vocab: int | None) -> list[list[int]]:
+        """Count the occurrences of each token that directly follows each sequence in `queries`."""
+
+    def sample(self, query: list[int], n: int, k: int) -> list[int]:
+        """Autoregressively sample k characters from conditional distributions based 
+        on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
+        (n - 1) characters all available characters are used.""" 
+    
+    def batch_sample(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
+        """Autoregressively sample num_samples of k characters each from conditional distributions based 
+        on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
+        (n - 1) characters all available characters are used.""" 
+
+    def is_sorted(self) -> bool:
+        """Check if the index's suffix table is sorted lexicographically. 
+        This is always true for valid indices."""
 
 class MemmapIndex:
     """An n-gram index backed by a memory-mapped file."""
@@ -29,4 +48,24 @@ class MemmapIndex:
         """Check if `query` has nonzero count. Faster than `count(query) > 0`."""
     
     def count(self, query: list[int]) -> int:
-        """Count the number of occurrences of a query in the index."""
+        """Count the number of occurrences of `query` in the index."""
+
+    def positions(self, query: list[int]) -> list[int]:
+        """Returns an unordered list of positions where `query` starts in `text`."""
+
+    def batch_next_token_counts(self, queries: list[list[int]], vocab: int | None) -> list[list[int]]:
+        """Count the occurrences of each token that directly follows each sequence in `queries`."""
+
+    def sample(self, query: list[int], n: int, k: int) -> list[int]:
+        """Autoregressively k characters from conditional distributions based 
+        on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
+        (n - 1) characters all available characters are used.""" 
+   
+    def batch_sample(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
+        """Autoregressively samples num_samples of k characters each from conditional distributions based 
+        on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
+        (n - 1) characters all available characters are used."""
+   
+    def is_sorted(self) -> bool:
+        """Check if the index's suffix table is sorted lexicographically. 
+        This is always true for valid indices."""

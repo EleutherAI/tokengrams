@@ -3,6 +3,10 @@ extern crate utf16_literal;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Deref, u64};
+use rand::distributions::{Distribution, WeightedIndex};
+use rand::thread_rng;
+use anyhow::Result;
+
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -40,8 +44,8 @@ impl SuffixTable<Box<[u16]>, Box<[u64]>> {
 
 impl<T, U> SuffixTable<T, U>
 where
-    T: Deref<Target = [u16]>,
-    U: Deref<Target = [u64]>,
+    T: Deref<Target = [u16]> + Sync,
+    U: Deref<Target = [u64]> + Sync,
 {
     pub fn from_parts(text: T, table: U) -> Self {
         SuffixTable { text, table }
@@ -165,6 +169,113 @@ where
             &self.table[start..end]
         }
     }
+
+    /// Returns the start and end indices of query matches in text
+    fn boundaries(&self, query: &[u16]) -> (usize, usize) {
+        if self.text.len() == 0
+            || query.len() == 0
+            || (query < self.suffix(0) && !self.suffix(0).starts_with(query))
+            || query > self.suffix(self.len() - 1)
+        {
+            return (0, self.table.len());
+        }
+
+        let start = binary_search(&self.table, |&sufi| query <= &self.text[sufi as usize..]);
+        let end = start
+            + binary_search(&self.table[start..], |&sufi| {
+                !self.text[sufi as usize..].starts_with(query)
+            });
+
+        (start, end)
+    }
+
+    /// Returns an unordered list of positions where `query` starts in `text`, limiting the search to a
+    /// specified range of the suffix table.
+    fn range_positions(&self, query: &[u16], range_start: usize, range_end: usize) -> &[u64] {
+        if self.text.len() == 0
+            || query.len() == 0
+            || (query < self.suffix(0 + range_start) && !self.suffix(0 + range_start).starts_with(query))
+            || query > self.suffix(std::cmp::max(0, range_end - 1))
+        {
+            return &[];
+        }
+
+        let start = binary_search(&self.table[range_start..range_end], |&sufi| query <= &self.text[sufi as usize..]);
+        let end = start
+            + binary_search(&self.table[range_start + start..range_end], |&sufi| {
+                !self.text[sufi as usize..].starts_with(query)
+            });
+    
+        if start > end {
+            &[]
+        } else {
+            &self.table[range_start + start..range_start + end]
+        }
+    }
+
+    /// Returns an unordered list of counts of token values that succeed `query`.
+    /// Counts all tokens if query is empty.
+    fn next_token_counts(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+        let mut counts: Vec<usize> = vec![0usize; vocab.unwrap_or(u16::MAX) as usize + 1];
+        let mut suffixed_query = query.to_vec();
+        let (range_start, range_end) = self.boundaries(query);
+
+        for i in 0..counts.len() {
+            suffixed_query.push(i as u16);
+            
+            let positions = self.range_positions(&suffixed_query, range_start, range_end);
+            counts[i] = positions.len();
+            suffixed_query.pop();
+        }
+        counts
+    }
+
+    /// Count the occurrences of each token that directly follows each query sequence.
+    pub fn batch_next_token_counts(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
+        queries.into_par_iter()
+            .map(|query| {
+                self.next_token_counts(query, vocab)
+            })
+            .collect()
+    }
+
+    /// Autoregressively sample k characters from a conditional distribution based 
+    /// on the previous (n - 1) characters (n-gram prefix) in the sequence.
+    pub fn sample(&self, query: &[u16], n: usize, k: usize) -> Result<Vec<u16>> {
+        let mut rng = thread_rng();
+        let mut sequence = Vec::from(query);
+
+        for _ in 0..k {
+            // look at the previous (n - 1) characters to predict the n-gram completion
+            let start = sequence.len().saturating_sub(n as usize - 1);
+            let prev = &sequence[start..];
+            
+            let counts: Vec<usize> = self.next_token_counts(prev, None);
+            let dist = WeightedIndex::new(&counts)?;
+            let sampled_index = dist.sample(&mut rng);
+
+            sequence.push(sampled_index as u16);
+        }
+
+        Ok(sequence)
+    }
+
+    /// Autoregressively samples num_samples of k characters each from conditional distributions based 
+    /// on the previous (n - 1) characters (n-gram prefix) in the sequence."""
+    pub fn batch_sample(&self, query: &[u16], n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>> {
+        (0..num_samples).into_par_iter()
+            .map(|_| {
+                self.sample(query, n, k)
+            })
+            .collect()
+    }
+
+    /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
+    pub fn is_sorted(&self) -> bool {
+        self.table.windows(2).all(|pair| {
+            &self.text[pair[0] as usize..] <= &self.text[pair[1] as usize..]
+        })
+    }
 }
 
 impl fmt::Debug for SuffixTable {
@@ -198,4 +309,50 @@ where
         }
     }
     left
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use utf16_literal::utf16;
+
+    fn sais(text: &str) -> SuffixTable {
+        SuffixTable::new(text.encode_utf16().collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn next_token_counts_exists() {
+        let sa = sais("aaab");
+        
+        let query = utf16!("a");
+        let a_index = utf16!("a")[0] as usize;
+        let b_index = utf16!("b")[0] as usize;
+
+        assert_eq!(2, sa.next_token_counts(query, Option::None)[a_index]);
+        assert_eq!(1, sa.next_token_counts(query, Option::None)[b_index]);
+    }
+
+    #[test]
+    fn next_token_counts_empty_query() {
+        let sa = sais("aaab");
+        
+        let query = utf16!("");
+        let a_index = utf16!("a")[0] as usize;
+        let b_index = utf16!("b")[0] as usize;
+
+        assert_eq!(3, sa.next_token_counts(query, Option::None)[a_index]);
+        assert_eq!(1, sa.next_token_counts(query, Option::None)[b_index]);
+    }
+
+    #[test]
+    fn batch_next_token_counts_exists() {
+        let sa = sais("aaab");
+        
+        let queries: Vec<Vec<u16>> = vec![vec![utf16!("a")[0]; 1]; 10_000];
+        let a_index = utf16!("a")[0] as usize;
+        let b_index = utf16!("b")[0] as usize;
+
+        assert_eq!(2, sa.batch_next_token_counts(&queries, Option::None)[0][a_index]);
+        assert_eq!(1, sa.batch_next_token_counts(&queries, Option::None)[0][b_index]);
+    }
 }
