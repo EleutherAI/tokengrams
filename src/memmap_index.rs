@@ -84,6 +84,10 @@ impl MemmapIndex {
         self.table.positions(&query).len()
     }
 
+    pub fn positions(&self, query: Vec<u16>) -> Vec<u64> {
+        self.table.positions(&query).to_vec()
+    }
+
     fn batch_next_token_counts(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
         self.table.batch_next_token_counts(&queries, vocab)
     }

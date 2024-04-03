@@ -12,10 +12,13 @@ class InMemoryIndex:
         """Check if `query` has nonzero count. Faster than `count(query) > 0`."""
     
     def count(self, query: list[int]) -> int:
-        """Count the number of occurrences of a query in the index."""
+        """Count the number of occurrences of `query` in the index."""
 
-    def batch_next_token_counts(self, query: list[list[int]], vocab: int | None) -> list[list[int]]:
-        """Count the occurrences of each token that directly follows each query sequence."""
+    def positions(self, query: list[int]) -> list[int]:
+        """Returns an unordered list of positions where `query` starts in `text`."""
+
+    def batch_next_token_counts(self, queries: list[list[int]], vocab: int | None) -> list[list[int]]:
+        """Count the occurrences of each token that directly follows each sequence in `queries`."""
 
     def sample(self, query: list[int], n: int, k: int) -> list[int]:
         """Autoregressively sample k characters from conditional distributions based 
@@ -45,10 +48,13 @@ class MemmapIndex:
         """Check if `query` has nonzero count. Faster than `count(query) > 0`."""
     
     def count(self, query: list[int]) -> int:
-        """Count the number of occurrences of a query in the index."""
+        """Count the number of occurrences of `query` in the index."""
 
-    def batch_next_token_counts(self, query: list[list[int]], vocab: int | None) -> list[list[int]]:
-        """Count the occurrences of each token that directly follows each query sequence."""
+    def positions(self, query: list[int]) -> list[int]:
+        """Returns an unordered list of positions where `query` starts in `text`."""
+
+    def batch_next_token_counts(self, queries: list[list[int]], vocab: int | None) -> list[list[int]]:
+        """Count the occurrences of each token that directly follows each sequence in `queries`."""
 
     def sample(self, query: list[int], n: int, k: int) -> list[int]:
         """Autoregressively k characters from conditional distributions based 
