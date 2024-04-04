@@ -1,18 +1,16 @@
 pub mod mmap_slice;
-pub mod table;
-pub mod util;
-
-pub use mmap_slice::MmapSlice;
+pub use in_memory_index::InMemoryIndex;
+pub use memmap_index::MemmapIndex;
 pub use table::SuffixTable;
 
 /// Python bindings
 use pyo3::prelude::*;
 
+mod table;
+mod util;
 mod in_memory_index;
 mod memmap_index;
 mod par_quicksort;
-use in_memory_index::InMemoryIndex;
-use memmap_index::MemmapIndex;
 
 #[pymodule]
 fn tokengrams(_py: Python, m: &PyModule) -> PyResult<()> {

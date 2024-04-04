@@ -8,7 +8,8 @@ use rand::thread_rng;
 use anyhow::Result;
 use crate::par_quicksort::par_sort_unstable_by_key;
 
-/// A suffix table is a sequence of lexicographically sorted suffixes.
+/// A suffix table is a sequence of lexicographically sorted suffixes. 
+/// The table supports n-gram statistics computation and language modeling over text corpora.
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
     text: T,
@@ -213,9 +214,8 @@ where
         }
     }
 
-    /// Returns an unordered list of counts of token values that succeed `query`.
-    /// Counts all tokens if query is empty.
-    fn next_token_counts(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+    /// Returns an unordered list of token counts succeeding `query`. Counts all tokens if query is empty.
+    pub fn count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         let mut counts: Vec<usize> = vec![0usize; vocab.unwrap_or(u16::MAX) as usize + 1];
         let mut suffixed_query = query.to_vec();
         let (range_start, range_end) = self.boundaries(query);
@@ -231,10 +231,10 @@ where
     }
 
     /// Count the occurrences of each token that directly follows each query sequence.
-    pub fn batch_next_token_counts(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
+    pub fn batch_count_next(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
         queries.into_par_iter()
             .map(|query| {
-                self.next_token_counts(query, vocab)
+                self.count_next(query, vocab)
             })
             .collect()
     }
@@ -250,7 +250,7 @@ where
             let start = sequence.len().saturating_sub(n as usize - 1);
             let prev = &sequence[start..];
             
-            let counts: Vec<usize> = self.next_token_counts(prev, None);
+            let counts: Vec<usize> = self.count_next(prev, None);
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
 
@@ -321,38 +321,38 @@ mod tests {
     }
 
     #[test]
-    fn next_token_counts_exists() {
+    fn count_next_exists() {
         let sa = sais("aaab");
         
         let query = utf16!("a");
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(2, sa.next_token_counts(query, Option::None)[a_index]);
-        assert_eq!(1, sa.next_token_counts(query, Option::None)[b_index]);
+        assert_eq!(2, sa.count_next(query, Option::None)[a_index]);
+        assert_eq!(1, sa.count_next(query, Option::None)[b_index]);
     }
 
     #[test]
-    fn next_token_counts_empty_query() {
+    fn count_next_empty_query() {
         let sa = sais("aaab");
         
         let query = utf16!("");
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(3, sa.next_token_counts(query, Option::None)[a_index]);
-        assert_eq!(1, sa.next_token_counts(query, Option::None)[b_index]);
+        assert_eq!(3, sa.count_next(query, Option::None)[a_index]);
+        assert_eq!(1, sa.count_next(query, Option::None)[b_index]);
     }
 
     #[test]
-    fn batch_next_token_counts_exists() {
+    fn batch_count_next_exists() {
         let sa = sais("aaab");
         
         let queries: Vec<Vec<u16>> = vec![vec![utf16!("a")[0]; 1]; 10_000];
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(2, sa.batch_next_token_counts(&queries, Option::None)[0][a_index]);
-        assert_eq!(1, sa.batch_next_token_counts(&queries, Option::None)[0][b_index]);
+        assert_eq!(2, sa.batch_count_next(&queries, Option::None)[0][a_index]);
+        assert_eq!(1, sa.batch_count_next(&queries, Option::None)[0][b_index]);
     }
 }
