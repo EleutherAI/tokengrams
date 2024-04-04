@@ -10,6 +10,7 @@ use pyo3::prelude::*;
 
 mod in_memory_index;
 mod memmap_index;
+mod par_quicksort;
 use in_memory_index::InMemoryIndex;
 use memmap_index::MemmapIndex;
 

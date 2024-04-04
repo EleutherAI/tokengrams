@@ -129,7 +129,6 @@ dependencies = [
  "instant",
  "number_prefix",
  "portable-atomic",
- "rayon",
  "unicode-width",
 ]
 
@@ -397,9 +396,9 @@ dependencies = [
 
 [[package]]
 name = "rayon"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4963ed1bc86e4f3ee217022bd855b297cef07fb9eac5dfa1f788b220b49b3bd"
+checksum = "b418a60154510ca1a002a752ca9714984e21e4241e804d32555251faf8b78ffa"
 dependencies = [
  "either",
  "rayon-core",
@@ -475,7 +474,7 @@ checksum = "69758bda2e78f098e4ccb393021a0963bb3442eac05f135c30f61b7370bbafae"
 
 [[package]]
 name = "tokengrams"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -486,6 +485,7 @@ dependencies = [
  "quickcheck",
  "rand 0.8.5",
  "rayon",
+ "rayon-core",
  "serde",
  "utf16_literal",
 ]
