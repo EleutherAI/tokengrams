@@ -9,7 +9,6 @@ use std::marker::PhantomData;
 use std::mem::{self, MaybeUninit};
 use std::ptr;
 use indicatif::{ProgressBar, ProgressStyle};
-use rayon_core;
 
 pub fn par_sort_unstable_by_key<T, K, F>(data: &mut [T], f: F, verbose: bool)
 where
@@ -870,12 +869,13 @@ where
     // Limit the number of imbalanced partitions to `floor(log2(len)) + 1`.
     let limit = usize::BITS - v.len().leading_zeros();
     let pbar = if verbose {
-        ProgressBar::new((v.len() as f64 / 2000.0).ceil() as u64)
+        let p = ProgressBar::new((v.len() as f64 / 2000.0).ceil() as u64);
+        p.set_style(ProgressStyle::with_template("{elapsed} elapsed (estimated duration {duration}) {bar:80}")
+            .unwrap());
+        p
     } else {
         ProgressBar::hidden()
     };
-    pbar.set_style(ProgressStyle::with_template("{elapsed} elapsed (estimated duration {duration}) {bar:80}")
-    .unwrap());
     recurse(v, &is_less, None, limit, &pbar);
     pbar.finish();
 }

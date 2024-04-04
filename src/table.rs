@@ -102,7 +102,7 @@ where
     /// ```
     #[allow(dead_code)]
     pub fn contains(&self, query: &[u16]) -> bool {
-        query.len() > 0
+        !query.is_empty()
             && self
                 .table
                 .binary_search_by(|&sufi| {
@@ -141,8 +141,8 @@ where
     pub fn positions(&self, query: &[u16]) -> &[u64] {
         // We can quickly decide whether the query won't match at all if
         // it's outside the range of suffixes.
-        if self.text.len() == 0
-            || query.len() == 0
+        if self.text.is_empty()
+            || query.is_empty()
             || (query < self.suffix(0) && !self.suffix(0).starts_with(query))
             || query > self.suffix(self.len() - 1)
         {
@@ -173,8 +173,8 @@ where
 
     /// Returns the start and end indices of query matches in text
     fn boundaries(&self, query: &[u16]) -> (usize, usize) {
-        if self.text.len() == 0
-            || query.len() == 0
+        if self.text.is_empty()
+            || query.is_empty()
             || (query < self.suffix(0) && !self.suffix(0).starts_with(query))
             || query > self.suffix(self.len() - 1)
         {
@@ -193,9 +193,9 @@ where
     /// Returns an unordered list of positions where `query` starts in `text`, limiting the search to a
     /// specified range of the suffix table.
     fn range_positions(&self, query: &[u16], range_start: usize, range_end: usize) -> &[u64] {
-        if self.text.len() == 0
-            || query.len() == 0
-            || (query < self.suffix(0 + range_start) && !self.suffix(0 + range_start).starts_with(query))
+        if self.text.is_empty()
+            || query.is_empty()
+            || (query < self.suffix(range_start) && !self.suffix(range_start).starts_with(query))
             || query > self.suffix(std::cmp::max(0, range_end - 1))
         {
             return &[];
@@ -220,11 +220,10 @@ where
         let mut suffixed_query = query.to_vec();
         let (range_start, range_end) = self.boundaries(query);
 
-        for i in 0..counts.len() {
+        for (i, count) in counts.iter_mut().enumerate() {
             suffixed_query.push(i as u16);
-            
             let positions = self.range_positions(&suffixed_query, range_start, range_end);
-            counts[i] = positions.len();
+            *count = positions.len();
             suffixed_query.pop();
         }
         counts
@@ -247,7 +246,7 @@ where
 
         for _ in 0..k {
             // look at the previous (n - 1) characters to predict the n-gram completion
-            let start = sequence.len().saturating_sub(n as usize - 1);
+            let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
             
             let counts: Vec<usize> = self.count_next(prev, None);
@@ -273,7 +272,7 @@ where
     /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
     pub fn is_sorted(&self) -> bool {
         self.table.windows(2).all(|pair| {
-            &self.text[pair[0] as usize..] <= &self.text[pair[1] as usize..]
+            self.text[pair[0] as usize..] <= self.text[pair[1] as usize..]
         })
     }
 }
