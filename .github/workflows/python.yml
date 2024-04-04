@@ -1,0 +1,29 @@
+name: Python Package using Conda
+
+on: [push]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 5
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: "3.10"
+          miniforge-version: latest
+          use-mamba: true
+          mamba-version: "*"  
+      - name: Test Python
+        env:
+          PYTHONPATH: /home/runner/work/tokengrams/tokengrams
+        shell: bash -l {0}
+        run: |
+          mamba install -c conda-forge numpy pytest hypothesis maturin
+          maturin develop
+          maturin build
+          python -m pip install --user ./target/wheels/tokengrams*.whl
+          pytest

@@ -1,11 +1,11 @@
 class InMemoryIndex:
     """An n-gram index."""
 
-    def __init__(self, tokens: list[int]) -> None:
+    def __init__(self, tokens: list[int], verbose: bool) -> None:
         ...
     
     @staticmethod
-    def from_token_file(path: str, token_limit: int | None, verbose: bool) -> "InMemoryIndex":
+    def from_token_file(path: str, verbose: bool, token_limit: int | None) -> "InMemoryIndex":
         """Construct a `InMemoryIndex` from a file containing raw little-endian tokens."""
 
     def contains(self, query: list[int]) -> bool:
