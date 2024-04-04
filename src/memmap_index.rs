@@ -7,6 +7,7 @@ use crate::mmap_slice::{MmapSlice, MmapSliceMut};
 use crate::table::SuffixTable;
 use crate::par_quicksort::par_sort_unstable_by_key;
 
+/// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
 pub struct MemmapIndex {
     table: SuffixTable<MmapSlice<u16>, MmapSlice<u64>>,
@@ -15,7 +16,7 @@ pub struct MemmapIndex {
 #[pymethods]
 impl MemmapIndex {
     #[new]
-    fn new(_py: Python, text_path: String, table_path: String) -> PyResult<Self> {
+    pub fn new(_py: Python, text_path: String, table_path: String) -> PyResult<Self> {
         let text_file = File::open(&text_path)?;
         let table_file = File::open(&table_path)?;
 
@@ -28,7 +29,7 @@ impl MemmapIndex {
     }
 
     #[staticmethod]
-    fn build(text_path: String, table_path: String, verbose: bool) -> PyResult<Self> {
+    pub fn build(text_path: String, table_path: String, verbose: bool) -> PyResult<Self> {
         // Memory map the text as read-only
         let text_mmap = MmapSlice::new(&File::open(&text_path)?)?;
 
@@ -76,11 +77,11 @@ impl MemmapIndex {
         })
     }
 
-    fn contains(&self, query: Vec<u16>) -> bool {
+    pub fn contains(&self, query: Vec<u16>) -> bool {
         self.table.contains(&query)
     }
 
-    fn count(&self, query: Vec<u16>) -> usize {
+    pub fn count(&self, query: Vec<u16>) -> usize {
         self.table.positions(&query).len()
     }
 
@@ -88,21 +89,25 @@ impl MemmapIndex {
         self.table.positions(&query).to_vec()
     }
 
-    fn batch_next_token_counts(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
-        self.table.batch_next_token_counts(&queries, vocab)
+    pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
+        self.table.count_next(&query, vocab)
     }
 
-    fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
+    pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
+        self.table.batch_count_next(&queries, vocab)
+    }
+
+    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
         self.table.sample(&query, n, k)
             .map_err(|error| PyValueError::new_err(error.to_string()))  
     }
 
-    fn batch_sample(&self, query: Vec<u16>, n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>, PyErr> {
+    pub fn batch_sample(&self, query: Vec<u16>, n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>, PyErr> {
         self.table.batch_sample(&query, n, k, num_samples)
             .map_err(|error| PyValueError::new_err(error.to_string()))  
     }
 
-    fn is_sorted(&self) -> bool {
+    pub fn is_sorted(&self) -> bool {
         self.table.is_sorted()
     }
 }
