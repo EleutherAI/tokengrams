@@ -6,11 +6,11 @@ pub use table::SuffixTable;
 /// Python bindings
 use pyo3::prelude::*;
 
-mod table;
-mod util;
 mod in_memory_index;
 mod memmap_index;
 mod par_quicksort;
+mod table;
+mod util;
 
 #[pymodule]
 fn tokengrams(_py: Python, m: &PyModule) -> PyResult<()> {

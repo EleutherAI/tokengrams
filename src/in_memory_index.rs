@@ -30,7 +30,11 @@ impl InMemoryIndex {
     }
 
     #[staticmethod]
-    pub fn from_token_file(path: String, verbose: bool, token_limit: Option<usize>) -> PyResult<Self> {
+    pub fn from_token_file(
+        path: String,
+        verbose: bool,
+        token_limit: Option<usize>,
+    ) -> PyResult<Self> {
         let mut buffer = Vec::new();
         let mut file = File::open(&path)?;
 
@@ -68,13 +72,21 @@ impl InMemoryIndex {
     }
 
     pub fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
-        self.table.sample(&query, n, k)
-            .map_err(|error| PyValueError::new_err(error.to_string()))  
+        self.table
+            .sample(&query, n, k)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    pub fn batch_sample(&self, query: Vec<u16>, n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>, PyErr> {
-        self.table.batch_sample(&query, n, k, num_samples)
-            .map_err(|error| PyValueError::new_err(error.to_string()))  
+    pub fn batch_sample(
+        &self,
+        query: Vec<u16>,
+        n: usize,
+        k: usize,
+        num_samples: usize,
+    ) -> Result<Vec<Vec<u16>>, PyErr> {
+        self.table
+            .batch_sample(&query, n, k, num_samples)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
     pub fn is_sorted(&self) -> bool {

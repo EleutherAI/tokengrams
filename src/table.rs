@@ -1,14 +1,14 @@
 extern crate utf16_literal;
 
+use crate::par_quicksort::par_sort_unstable_by_key;
+use anyhow::Result;
+use rand::distributions::{Distribution, WeightedIndex};
+use rand::thread_rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Deref, u64};
-use rand::distributions::{Distribution, WeightedIndex};
-use rand::thread_rng;
-use anyhow::Result;
-use crate::par_quicksort::par_sort_unstable_by_key;
 
-/// A suffix table is a sequence of lexicographically sorted suffixes. 
+/// A suffix table is a sequence of lexicographically sorted suffixes.
 /// The table supports n-gram statistics computation and language modeling over text corpora.
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
@@ -201,12 +201,14 @@ where
             return &[];
         }
 
-        let start = binary_search(&self.table[range_start..range_end], |&sufi| query <= &self.text[sufi as usize..]);
+        let start = binary_search(&self.table[range_start..range_end], |&sufi| {
+            query <= &self.text[sufi as usize..]
+        });
         let end = start
             + binary_search(&self.table[range_start + start..range_end], |&sufi| {
                 !self.text[sufi as usize..].starts_with(query)
             });
-    
+
         if start > end {
             &[]
         } else {
@@ -231,14 +233,13 @@ where
 
     /// Count the occurrences of each token that directly follows each query sequence.
     pub fn batch_count_next(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
-        queries.into_par_iter()
-            .map(|query| {
-                self.count_next(query, vocab)
-            })
+        queries
+            .into_par_iter()
+            .map(|query| self.count_next(query, vocab))
             .collect()
     }
 
-    /// Autoregressively sample k characters from a conditional distribution based 
+    /// Autoregressively sample k characters from a conditional distribution based
     /// on the previous (n - 1) characters (n-gram prefix) in the sequence.
     pub fn sample(&self, query: &[u16], n: usize, k: usize) -> Result<Vec<u16>> {
         let mut rng = thread_rng();
@@ -248,7 +249,7 @@ where
             // look at the previous (n - 1) characters to predict the n-gram completion
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
-            
+
             let counts: Vec<usize> = self.count_next(prev, None);
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
@@ -259,21 +260,26 @@ where
         Ok(sequence)
     }
 
-    /// Autoregressively samples num_samples of k characters each from conditional distributions based 
+    /// Autoregressively samples num_samples of k characters each from conditional distributions based
     /// on the previous (n - 1) characters (n-gram prefix) in the sequence."""
-    pub fn batch_sample(&self, query: &[u16], n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>> {
-        (0..num_samples).into_par_iter()
-            .map(|_| {
-                self.sample(query, n, k)
-            })
+    pub fn batch_sample(
+        &self,
+        query: &[u16],
+        n: usize,
+        k: usize,
+        num_samples: usize,
+    ) -> Result<Vec<Vec<u16>>> {
+        (0..num_samples)
+            .into_par_iter()
+            .map(|_| self.sample(query, n, k))
             .collect()
     }
 
     /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
     pub fn is_sorted(&self) -> bool {
-        self.table.windows(2).all(|pair| {
-            self.text[pair[0] as usize..] <= self.text[pair[1] as usize..]
-        })
+        self.table
+            .windows(2)
+            .all(|pair| self.text[pair[0] as usize..] <= self.text[pair[1] as usize..])
     }
 }
 
@@ -322,7 +328,7 @@ mod tests {
     #[test]
     fn count_next_exists() {
         let sa = sais("aaab");
-        
+
         let query = utf16!("a");
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
@@ -334,7 +340,7 @@ mod tests {
     #[test]
     fn count_next_empty_query() {
         let sa = sais("aaab");
-        
+
         let query = utf16!("");
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
@@ -346,7 +352,7 @@ mod tests {
     #[test]
     fn batch_count_next_exists() {
         let sa = sais("aaab");
-        
+
         let queries: Vec<Vec<u16>> = vec![vec![utf16!("a")[0]; 1]; 10_000];
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
