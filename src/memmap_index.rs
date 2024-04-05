@@ -4,9 +4,10 @@ use std::fs::{File, OpenOptions};
 use std::time::Instant;
 
 use crate::mmap_slice::{MmapSlice, MmapSliceMut};
-use crate::table::SuffixTable;
 use crate::par_quicksort::par_sort_unstable_by_key;
+use crate::table::SuffixTable;
 
+/// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
 pub struct MemmapIndex {
     table: SuffixTable<MmapSlice<u16>, MmapSlice<u64>>,
@@ -15,7 +16,7 @@ pub struct MemmapIndex {
 #[pymethods]
 impl MemmapIndex {
     #[new]
-    fn new(_py: Python, text_path: String, table_path: String) -> PyResult<Self> {
+    pub fn new(_py: Python, text_path: String, table_path: String) -> PyResult<Self> {
         let text_file = File::open(&text_path)?;
         let table_file = File::open(&table_path)?;
 
@@ -28,7 +29,7 @@ impl MemmapIndex {
     }
 
     #[staticmethod]
-    fn build(text_path: String, table_path: String, verbose: bool) -> PyResult<Self> {
+    pub fn build(text_path: String, table_path: String, verbose: bool) -> PyResult<Self> {
         // Memory map the text as read-only
         let text_mmap = MmapSlice::new(&File::open(&text_path)?)?;
 
@@ -47,7 +48,10 @@ impl MemmapIndex {
         let start = Instant::now();
 
         let mut table_mmap = MmapSliceMut::<u64>::new(&table_file)?;
-        table_mmap.iter_mut().enumerate().for_each(|(i, x)| *x = i as u64);
+        table_mmap
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, x)| *x = i as u64);
 
         assert_eq!(table_mmap.len(), text_mmap.len());
         println!("Time elapsed: {:?}", start.elapsed());
@@ -57,16 +61,24 @@ impl MemmapIndex {
         // available as well. These magic numbers were tuned on a server with 48 physical cores.
         // Empirically we start getting stack overflows between 5B and 10B tokens when using the
         // default stack size of 2MB. We scale the stack size as log2(n) * 8MB to avoid this.
-        let scale = (text_mmap.len() as f64) / 5e9;     // 5B tokens
-        let stack_size = scale.log2().max(1.0) * 8e6;   // 8MB
+        let scale = (text_mmap.len() as f64) / 5e9; // 5B tokens
+        let stack_size = scale.log2().max(1.0) * 8e6; // 8MB
 
-        rayon::ThreadPoolBuilder::new().stack_size(stack_size as usize).build().unwrap().install(|| {
-            // Sort the indices by the suffixes they point to.
-            // The unstable algorithm is critical for avoiding out-of-memory errors, since it does
-            // not allocate any more memory than the input and output slices.
-            println!("Sorting indices...");
-            par_sort_unstable_by_key(table_mmap.as_slice_mut(), |&i| &text_mmap[i as usize..], verbose);
-        });
+        rayon::ThreadPoolBuilder::new()
+            .stack_size(stack_size as usize)
+            .build()
+            .unwrap()
+            .install(|| {
+                // Sort the indices by the suffixes they point to.
+                // The unstable algorithm is critical for avoiding out-of-memory errors, since it does
+                // not allocate any more memory than the input and output slices.
+                println!("Sorting indices...");
+                par_sort_unstable_by_key(
+                    table_mmap.as_slice_mut(),
+                    |&i| &text_mmap[i as usize..],
+                    verbose,
+                );
+            });
         println!("Time elapsed: {:?}", start.elapsed());
 
         // Re-open the table as read-only
@@ -76,11 +88,11 @@ impl MemmapIndex {
         })
     }
 
-    fn contains(&self, query: Vec<u16>) -> bool {
+    pub fn contains(&self, query: Vec<u16>) -> bool {
         self.table.contains(&query)
     }
 
-    fn count(&self, query: Vec<u16>) -> usize {
+    pub fn count(&self, query: Vec<u16>) -> usize {
         self.table.positions(&query).len()
     }
 
@@ -88,21 +100,33 @@ impl MemmapIndex {
         self.table.positions(&query).to_vec()
     }
 
-    fn batch_next_token_counts(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
-        self.table.batch_next_token_counts(&queries, vocab)
+    pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
+        self.table.count_next(&query, vocab)
     }
 
-    fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
-        self.table.sample(&query, n, k)
-            .map_err(|error| PyValueError::new_err(error.to_string()))  
+    pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
+        self.table.batch_count_next(&queries, vocab)
     }
 
-    fn batch_sample(&self, query: Vec<u16>, n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>, PyErr> {
-        self.table.batch_sample(&query, n, k, num_samples)
-            .map_err(|error| PyValueError::new_err(error.to_string()))  
+    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
+        self.table
+            .sample(&query, n, k)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    fn is_sorted(&self) -> bool {
+    pub fn batch_sample(
+        &self,
+        query: Vec<u16>,
+        n: usize,
+        k: usize,
+        num_samples: usize,
+    ) -> Result<Vec<Vec<u16>>, PyErr> {
+        self.table
+            .batch_sample(&query, n, k, num_samples)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    pub fn is_sorted(&self) -> bool {
         self.table.is_sorted()
     }
 }

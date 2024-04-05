@@ -7,6 +7,7 @@ use std::io::Read;
 use crate::table::SuffixTable;
 use crate::util::transmute_slice;
 
+/// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
 #[pyclass]
 pub struct InMemoryIndex {
     table: SuffixTable,
@@ -15,21 +16,25 @@ pub struct InMemoryIndex {
 #[pymethods]
 impl InMemoryIndex {
     #[new]
-    fn new(_py: Python, tokens: Vec<u16>, verbose: bool) -> Self {
+    pub fn new(_py: Python, tokens: Vec<u16>, verbose: bool) -> Self {
         InMemoryIndex {
             table: SuffixTable::new(tokens, verbose),
         }
     }
 
     #[staticmethod]
-    fn from_pretrained(path: String) -> PyResult<Self> {
+    pub fn from_pretrained(path: String) -> PyResult<Self> {
         // TODO: handle errors here
         let table: SuffixTable = deserialize(&std::fs::read(path)?).unwrap();
         Ok(InMemoryIndex { table })
     }
 
     #[staticmethod]
-    fn from_token_file(path: String, verbose: bool, token_limit: Option<usize>) -> PyResult<Self> {
+    pub fn from_token_file(
+        path: String,
+        verbose: bool,
+        token_limit: Option<usize>,
+    ) -> PyResult<Self> {
         let mut buffer = Vec::new();
         let mut file = File::open(&path)?;
 
@@ -46,11 +51,11 @@ impl InMemoryIndex {
         })
     }
 
-    fn contains(&self, query: Vec<u16>) -> bool {
+    pub fn contains(&self, query: Vec<u16>) -> bool {
         self.table.contains(&query)
     }
 
-    fn count(&self, query: Vec<u16>) -> usize {
+    pub fn count(&self, query: Vec<u16>) -> usize {
         self.table.positions(&query).len()
     }
 
@@ -58,25 +63,37 @@ impl InMemoryIndex {
         self.table.positions(&query).to_vec()
     }
 
-    fn batch_next_token_counts(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
-        self.table.batch_next_token_counts(&queries, vocab)
+    pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
+        self.table.count_next(&query, vocab)
     }
 
-    fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
-        self.table.sample(&query, n, k)
-            .map_err(|error| PyValueError::new_err(error.to_string()))  
+    pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
+        self.table.batch_count_next(&queries, vocab)
     }
 
-    fn batch_sample(&self, query: Vec<u16>, n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>, PyErr> {
-        self.table.batch_sample(&query, n, k, num_samples)
-            .map_err(|error| PyValueError::new_err(error.to_string()))  
+    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
+        self.table
+            .sample(&query, n, k)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    fn is_sorted(&self) -> bool {
+    pub fn batch_sample(
+        &self,
+        query: Vec<u16>,
+        n: usize,
+        k: usize,
+        num_samples: usize,
+    ) -> Result<Vec<Vec<u16>>, PyErr> {
+        self.table
+            .batch_sample(&query, n, k, num_samples)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    pub fn is_sorted(&self) -> bool {
         self.table.is_sorted()
     }
 
-    fn save(&self, path: String) -> PyResult<()> {
+    pub fn save(&self, path: String) -> PyResult<()> {
         // TODO: handle errors here
         let bytes = serialize(&self.table).unwrap();
         std::fs::write(&path, bytes)?;

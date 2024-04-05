@@ -4,12 +4,11 @@
 //! The only difference from the original is that calls to `recurse` are executed in parallel using
 //! `rayon_core::join`.
 
+use indicatif::{ProgressBar, ProgressStyle};
 use std::cmp;
 use std::marker::PhantomData;
 use std::mem::{self, MaybeUninit};
 use std::ptr;
-use indicatif::{ProgressBar, ProgressStyle};
-use rayon_core;
 
 pub fn par_sort_unstable_by_key<T, K, F>(data: &mut [T], f: F, verbose: bool)
 where
@@ -755,8 +754,13 @@ where
 ///
 /// `limit` is the number of allowed imbalanced partitions before switching to `heapsort`. If zero,
 /// this function will immediately switch to heapsort.
-fn recurse<'a, T, F>(mut v: &'a mut [T], is_less: &F, mut pred: Option<&'a mut T>, mut limit: u32, pbar: &ProgressBar)
-where
+fn recurse<'a, T, F>(
+    mut v: &'a mut [T],
+    is_less: &F,
+    mut pred: Option<&'a mut T>,
+    mut limit: u32,
+    pbar: &ProgressBar,
+) where
     T: Send,
     F: Fn(&T, &T) -> bool + Sync,
 {
@@ -870,12 +874,17 @@ where
     // Limit the number of imbalanced partitions to `floor(log2(len)) + 1`.
     let limit = usize::BITS - v.len().leading_zeros();
     let pbar = if verbose {
-        ProgressBar::new((v.len() as f64 / 2000.0).ceil() as u64)
+        let p = ProgressBar::new((v.len() as f64 / 2000.0).ceil() as u64);
+        p.set_style(
+            ProgressStyle::with_template(
+                "{elapsed} elapsed (estimated duration {duration}) {bar:80}",
+            )
+            .unwrap(),
+        );
+        p
     } else {
         ProgressBar::hidden()
     };
-    pbar.set_style(ProgressStyle::with_template("{elapsed} elapsed (estimated duration {duration}) {bar:80}")
-    .unwrap());
     recurse(v, &is_less, None, limit, &pbar);
     pbar.finish();
 }

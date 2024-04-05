@@ -1,14 +1,15 @@
 extern crate utf16_literal;
 
+use crate::par_quicksort::par_sort_unstable_by_key;
+use anyhow::Result;
+use rand::distributions::{Distribution, WeightedIndex};
+use rand::thread_rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Deref, u64};
-use rand::distributions::{Distribution, WeightedIndex};
-use rand::thread_rng;
-use anyhow::Result;
-use crate::par_quicksort::par_sort_unstable_by_key;
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
+/// The table supports n-gram statistics computation and language modeling over text corpora.
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
     text: T,
@@ -101,7 +102,7 @@ where
     /// ```
     #[allow(dead_code)]
     pub fn contains(&self, query: &[u16]) -> bool {
-        query.len() > 0
+        !query.is_empty()
             && self
                 .table
                 .binary_search_by(|&sufi| {
@@ -140,8 +141,8 @@ where
     pub fn positions(&self, query: &[u16]) -> &[u64] {
         // We can quickly decide whether the query won't match at all if
         // it's outside the range of suffixes.
-        if self.text.len() == 0
-            || query.len() == 0
+        if self.text.is_empty()
+            || query.is_empty()
             || (query < self.suffix(0) && !self.suffix(0).starts_with(query))
             || query > self.suffix(self.len() - 1)
         {
@@ -172,8 +173,8 @@ where
 
     /// Returns the start and end indices of query matches in text
     fn boundaries(&self, query: &[u16]) -> (usize, usize) {
-        if self.text.len() == 0
-            || query.len() == 0
+        if self.text.is_empty()
+            || query.is_empty()
             || (query < self.suffix(0) && !self.suffix(0).starts_with(query))
             || query > self.suffix(self.len() - 1)
         {
@@ -192,20 +193,22 @@ where
     /// Returns an unordered list of positions where `query` starts in `text`, limiting the search to a
     /// specified range of the suffix table.
     fn range_positions(&self, query: &[u16], range_start: usize, range_end: usize) -> &[u64] {
-        if self.text.len() == 0
-            || query.len() == 0
-            || (query < self.suffix(0 + range_start) && !self.suffix(0 + range_start).starts_with(query))
+        if self.text.is_empty()
+            || query.is_empty()
+            || (query < self.suffix(range_start) && !self.suffix(range_start).starts_with(query))
             || query > self.suffix(std::cmp::max(0, range_end - 1))
         {
             return &[];
         }
 
-        let start = binary_search(&self.table[range_start..range_end], |&sufi| query <= &self.text[sufi as usize..]);
+        let start = binary_search(&self.table[range_start..range_end], |&sufi| {
+            query <= &self.text[sufi as usize..]
+        });
         let end = start
             + binary_search(&self.table[range_start + start..range_end], |&sufi| {
                 !self.text[sufi as usize..].starts_with(query)
             });
-    
+
         if start > end {
             &[]
         } else {
@@ -213,33 +216,30 @@ where
         }
     }
 
-    /// Returns an unordered list of counts of token values that succeed `query`.
-    /// Counts all tokens if query is empty.
-    fn next_token_counts(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+    /// Returns an unordered list of token counts succeeding `query`. Counts all tokens if query is empty.
+    pub fn count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         let mut counts: Vec<usize> = vec![0usize; vocab.unwrap_or(u16::MAX) as usize + 1];
         let mut suffixed_query = query.to_vec();
         let (range_start, range_end) = self.boundaries(query);
 
-        for i in 0..counts.len() {
+        for (i, count) in counts.iter_mut().enumerate() {
             suffixed_query.push(i as u16);
-            
             let positions = self.range_positions(&suffixed_query, range_start, range_end);
-            counts[i] = positions.len();
+            *count = positions.len();
             suffixed_query.pop();
         }
         counts
     }
 
     /// Count the occurrences of each token that directly follows each query sequence.
-    pub fn batch_next_token_counts(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
-        queries.into_par_iter()
-            .map(|query| {
-                self.next_token_counts(query, vocab)
-            })
+    pub fn batch_count_next(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
+        queries
+            .into_par_iter()
+            .map(|query| self.count_next(query, vocab))
             .collect()
     }
 
-    /// Autoregressively sample k characters from a conditional distribution based 
+    /// Autoregressively sample k characters from a conditional distribution based
     /// on the previous (n - 1) characters (n-gram prefix) in the sequence.
     pub fn sample(&self, query: &[u16], n: usize, k: usize) -> Result<Vec<u16>> {
         let mut rng = thread_rng();
@@ -247,10 +247,10 @@ where
 
         for _ in 0..k {
             // look at the previous (n - 1) characters to predict the n-gram completion
-            let start = sequence.len().saturating_sub(n as usize - 1);
+            let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
-            
-            let counts: Vec<usize> = self.next_token_counts(prev, None);
+
+            let counts: Vec<usize> = self.count_next(prev, None);
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
 
@@ -260,21 +260,26 @@ where
         Ok(sequence)
     }
 
-    /// Autoregressively samples num_samples of k characters each from conditional distributions based 
+    /// Autoregressively samples num_samples of k characters each from conditional distributions based
     /// on the previous (n - 1) characters (n-gram prefix) in the sequence."""
-    pub fn batch_sample(&self, query: &[u16], n: usize, k: usize, num_samples: usize) -> Result<Vec<Vec<u16>>> {
-        (0..num_samples).into_par_iter()
-            .map(|_| {
-                self.sample(query, n, k)
-            })
+    pub fn batch_sample(
+        &self,
+        query: &[u16],
+        n: usize,
+        k: usize,
+        num_samples: usize,
+    ) -> Result<Vec<Vec<u16>>> {
+        (0..num_samples)
+            .into_par_iter()
+            .map(|_| self.sample(query, n, k))
             .collect()
     }
 
     /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
     pub fn is_sorted(&self) -> bool {
-        self.table.windows(2).all(|pair| {
-            &self.text[pair[0] as usize..] <= &self.text[pair[1] as usize..]
-        })
+        self.table
+            .windows(2)
+            .all(|pair| self.text[pair[0] as usize..] <= self.text[pair[1] as usize..])
     }
 }
 
@@ -321,38 +326,38 @@ mod tests {
     }
 
     #[test]
-    fn next_token_counts_exists() {
+    fn count_next_exists() {
         let sa = sais("aaab");
-        
+
         let query = utf16!("a");
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(2, sa.next_token_counts(query, Option::None)[a_index]);
-        assert_eq!(1, sa.next_token_counts(query, Option::None)[b_index]);
+        assert_eq!(2, sa.count_next(query, Option::None)[a_index]);
+        assert_eq!(1, sa.count_next(query, Option::None)[b_index]);
     }
 
     #[test]
-    fn next_token_counts_empty_query() {
+    fn count_next_empty_query() {
         let sa = sais("aaab");
-        
+
         let query = utf16!("");
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(3, sa.next_token_counts(query, Option::None)[a_index]);
-        assert_eq!(1, sa.next_token_counts(query, Option::None)[b_index]);
+        assert_eq!(3, sa.count_next(query, Option::None)[a_index]);
+        assert_eq!(1, sa.count_next(query, Option::None)[b_index]);
     }
 
     #[test]
-    fn batch_next_token_counts_exists() {
+    fn batch_count_next_exists() {
         let sa = sais("aaab");
-        
+
         let queries: Vec<Vec<u16>> = vec![vec![utf16!("a")[0]; 1]; 10_000];
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(2, sa.batch_next_token_counts(&queries, Option::None)[0][a_index]);
-        assert_eq!(1, sa.batch_next_token_counts(&queries, Option::None)[0][b_index]);
+        assert_eq!(2, sa.batch_count_next(&queries, Option::None)[0][a_index]);
+        assert_eq!(1, sa.batch_count_next(&queries, Option::None)[0][b_index]);
     }
 }
