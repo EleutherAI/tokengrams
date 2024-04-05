@@ -4,7 +4,9 @@
 //! The only difference from the original is that calls to `recurse` are executed in parallel using
 //! `rayon_core::join`.
 
+use rdst::{RadixKey, RadixSort};
 use indicatif::{ProgressBar, ProgressStyle};
+use std::marker::Copy;
 use std::cmp;
 use std::marker::PhantomData;
 use std::mem::{self, MaybeUninit};
@@ -12,11 +14,12 @@ use std::ptr;
 
 pub fn par_sort_unstable_by_key<T, K, F>(data: &mut [T], f: F, verbose: bool)
 where
-    T: Send,
+    T: Send + RadixKey + Sync + Copy,
     K: Ord + Send,
     F: Fn(&T) -> K + Sync,
 {
-    par_quicksort(data, |a, b| f(a).lt(&f(b)), verbose);
+    data.radix_sort_unstable();
+    // par_quicksort(data, |a, b| f(a).lt(&f(b)), verbose);
 }
 
 /// When dropped, copies from `src` into `dest`.

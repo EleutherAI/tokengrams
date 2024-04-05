@@ -20,6 +20,7 @@ pyo3 = { version = "0.20.1", features = ["extension-module"] }
 rand = "0.8.5"
 rayon = "1.10.0"
 rayon-core = "1.12.1"
+rdst = "0.20.14"
 serde = { version = "1.0.197", features = ["derive"] }
 utf16_literal = "0.2.1"
 

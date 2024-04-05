@@ -35,6 +35,7 @@ impl SuffixTable<Box<[u16]>, Box<[u64]>> {
         // parallelism overhead here.
         let mut table: Vec<_> = (0..text.len() as u64).collect();
         par_sort_unstable_by_key(&mut table[..], |&i| &text[i as usize..], verbose);
+        assert!(table.is_sorted());
 
         SuffixTable {
             text,
