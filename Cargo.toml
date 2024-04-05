@@ -1,7 +1,7 @@
 [package]
 name = "tokengrams"
 description = "Compute n-gram statistics and model language over pre-tokenized text corpora used to train large language models." 
-license = "MIT License"
+license = "MIT"
 version = "0.3.0"
 edition = "2021"
 
