@@ -3,6 +3,8 @@ Tokengrams allows you to efficiently compute $n$-gram statistics for pre-tokeniz
 
 Our code also allows you to turn your suffix array index into an efficient $n$-gram language model, which can be used to generate text or compute the perplexity of a given text.
 
+Tokens must be provided as 16-bit unsigned integers.
+
 The backend is written in Rust, and the Python bindings are generated using [PyO3](https://github.com/PyO3/pyo3).
 
 # Installation
