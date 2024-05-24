@@ -25,10 +25,10 @@ maturin develop
 from tokengrams import MemmapIndex
 
 # Create a new index from an on-disk corpus called `document.bin` and save it to
-# `pile.idx`.
+# `table.idx`. document.bin contains u16 elements; table.idx contains u64 elements.
 index = MemmapIndex.build(
     "/data/document.bin",
-    "/pile.idx",
+    "/table.idx",
 )
 
 # Verify index correctness
@@ -43,7 +43,7 @@ print(index.count(tokenizer.encode("hello world")))
 # You can now load the index from disk later using __init__
 index = MemmapIndex(
     "/data/document.bin",
-    "/pile.idx"
+    "/table.idx"
 )
 ```
 

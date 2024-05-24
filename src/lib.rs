@@ -10,6 +10,7 @@ mod in_memory_index;
 mod memmap_index;
 mod par_quicksort;
 mod table;
+mod sushi_sort;
 mod util;
 
 #[pymodule]
