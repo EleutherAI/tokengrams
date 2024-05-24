@@ -3,6 +3,7 @@ extern crate utf16_literal;
 
 use quickcheck::{QuickCheck, Testable};
 use tokengrams::SuffixTable;
+use tokengrams::memmap_index::MemmapIndex;
 use utf16_literal::utf16;
 
 fn sais(text: &str) -> SuffixTable {
@@ -13,6 +14,13 @@ fn qc<T: Testable>(f: T) {
     QuickCheck::new().tests(1000).max_tests(10000).quickcheck(f);
 }
 
+
+#[test]
+fn bus_err() {
+    let tokens_path = "/mnt/ssd-1/pile_preshuffled/deduped/document.bin".to_string();
+    let output_path = "/mnt/ssd-1/lucia/table.bin".to_string();
+    let _ = MemmapIndex::build(tokens_path, output_path, true);
+}
 
 // Do some testing on substring search.
 

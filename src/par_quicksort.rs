@@ -260,7 +260,7 @@ fn partition_in_blocks<T, F>(v: &mut [T], pivot: &T, is_less: &F) -> usize
 where
     F: Fn(&T, &T) -> bool,
 {
-    // Number of elements in a typical block.
+    // Number of elements in a typical block.   
     const BLOCK: usize = 128;
 
     // The partitioning algorithm repeats the following steps until completion:
@@ -306,7 +306,7 @@ where
     loop {
         // We are done with partitioning block-by-block when `l` and `r` get very close. Then we do
         // some patch-up work in order to partition the remaining elements in between.
-        let is_done = width(l, r) <= 2 * BLOCK;
+        let is_done = width(l, r) <= 2 * BLOCK; // is_done = False
 
         if is_done {
             // Number of remaining elements (still not compared to the pivot).
@@ -366,7 +366,7 @@ where
             end_r = start_r;
             let mut elem = r;
 
-            for i in 0..block_r {
+            for i in 0..block_r { // i = 0; elem.offset(-1) is not u16??? but offset amount handled automatically
                 // SAFETY: The unsafety operations below involve the usage of the `offset`.
                 //         According to the conditions required by the function, we satisfy them because:
                 //         1. `offsets_r` is stack-allocated, and thus considered separate allocated object.
@@ -382,6 +382,7 @@ where
                     // Branchless comparison.
                     elem = elem.offset(-1);
                     *end_r = i as u8;
+                    // Replace !is_less(&*elem, pivot) with true to test 3.
                     end_r = end_r.offset(is_less(&*elem, pivot) as isize);
                 }
             }
@@ -873,6 +874,7 @@ where
 
     // Limit the number of imbalanced partitions to `floor(log2(len)) + 1`.
     let limit = usize::BITS - v.len().leading_zeros();
+
     let pbar = if verbose {
         let p = ProgressBar::new((v.len() as f64 / 2000.0).ceil() as u64);
         p.set_style(

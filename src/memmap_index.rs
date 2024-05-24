@@ -1,22 +1,24 @@
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
+// use pyo3::exceptions::PyValueError;
+// use pyo3::prelude::*;
+// use pyo3::{PyResult, PyErr};
 use std::fs::{File, OpenOptions};
 use std::time::Instant;
+use anyhow::Error;
 
 use crate::mmap_slice::{MmapSlice, MmapSliceMut};
 use crate::par_quicksort::par_sort_unstable_by_key;
 use crate::table::SuffixTable;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
-#[pyclass]
+// #[pyclass]
 pub struct MemmapIndex {
     table: SuffixTable<MmapSlice<u16>, MmapSlice<u64>>,
 }
 
-#[pymethods]
+// #[pymethods]
 impl MemmapIndex {
-    #[new]
-    pub fn new(_py: Python, text_path: String, table_path: String) -> PyResult<Self> {
+    // #[new]
+    pub fn new(text_path: String, table_path: String) -> Result<Self, Error> { // Result  _py: Python, 
         let text_file = File::open(&text_path)?;
         let table_file = File::open(&table_path)?;
 
@@ -28,8 +30,8 @@ impl MemmapIndex {
         })
     }
 
-    #[staticmethod]
-    pub fn build(text_path: String, table_path: String, verbose: bool) -> PyResult<Self> {
+    // #[staticmethod]
+    pub fn build(text_path: String, table_path: String, verbose: bool) -> Result<Self, Error> { // PyResult
         // Memory map the text as read-only
         let text_mmap = MmapSlice::new(&File::open(&text_path)?)?;
 
@@ -108,10 +110,10 @@ impl MemmapIndex {
         self.table.batch_count_next(&queries, vocab)
     }
 
-    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
+    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, Error> { // PyErr
         self.table
             .sample(&query, n, k)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
+            // .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
     pub fn batch_sample(
@@ -120,10 +122,10 @@ impl MemmapIndex {
         n: usize,
         k: usize,
         num_samples: usize,
-    ) -> Result<Vec<Vec<u16>>, PyErr> {
+    ) -> Result<Vec<Vec<u16>>, Error> { // PyErr
         self.table
             .batch_sample(&query, n, k, num_samples)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
+            // .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
     pub fn is_sorted(&self) -> bool {

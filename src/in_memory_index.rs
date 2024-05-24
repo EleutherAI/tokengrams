@@ -1,6 +1,8 @@
 use bincode::{deserialize, serialize};
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
+// use pyo3::exceptions::PyValueError;
+// use pyo3::PyErr;
+use anyhow::Error;
+// use pyo3::prelude::*;
 use std::fs::File;
 use std::io::Read;
 
@@ -8,33 +10,33 @@ use crate::table::SuffixTable;
 use crate::util::transmute_slice;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
-#[pyclass]
+// #[pyclass]
 pub struct InMemoryIndex {
     table: SuffixTable,
 }
 
-#[pymethods]
+// #[pymethods]
 impl InMemoryIndex {
-    #[new]
-    pub fn new(_py: Python, tokens: Vec<u16>, verbose: bool) -> Self {
+    // #[new]
+    pub fn new(tokens: Vec<u16>, verbose: bool) -> Self { // _py: Python, 
         InMemoryIndex {
             table: SuffixTable::new(tokens, verbose),
         }
     }
 
-    #[staticmethod]
-    pub fn from_pretrained(path: String) -> PyResult<Self> {
+    // #[staticmethod]
+    pub fn from_pretrained(path: String) -> Result<Self, Error> {
         // TODO: handle errors here
         let table: SuffixTable = deserialize(&std::fs::read(path)?).unwrap();
         Ok(InMemoryIndex { table })
     }
 
-    #[staticmethod]
+    // #[staticmethod]
     pub fn from_token_file(
         path: String,
         verbose: bool,
         token_limit: Option<usize>,
-    ) -> PyResult<Self> {
+    ) -> Result<Self, Error> {
         let mut buffer = Vec::new();
         let mut file = File::open(&path)?;
 
@@ -71,10 +73,10 @@ impl InMemoryIndex {
         self.table.batch_count_next(&queries, vocab)
     }
 
-    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
+    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, Error> {
         self.table
             .sample(&query, n, k)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
+            // .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
     pub fn batch_sample(
@@ -83,17 +85,17 @@ impl InMemoryIndex {
         n: usize,
         k: usize,
         num_samples: usize,
-    ) -> Result<Vec<Vec<u16>>, PyErr> {
+    ) -> Result<Vec<Vec<u16>>, Error> {
         self.table
             .batch_sample(&query, n, k, num_samples)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
+            // .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
     pub fn is_sorted(&self) -> bool {
         self.table.is_sorted()
     }
 
-    pub fn save(&self, path: String) -> PyResult<()> {
+    pub fn save(&self, path: String) -> Result<(), Error> {
         // TODO: handle errors here
         let bytes = serialize(&self.table).unwrap();
         std::fs::write(&path, bytes)?;
