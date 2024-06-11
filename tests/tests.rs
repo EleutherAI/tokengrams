@@ -210,3 +210,67 @@ fn prop_sample() {
 
     qc(prop as fn(String) -> bool);
 }
+
+#[test]
+fn sample_benchmark() {
+    let text_path = "/mnt/ssd-1/nora/pile-10G.bin".to_string();
+    let index_path = "/mnt/ssd-1/nora/pile-10G.idx".to_string();
+    // let text_path = "/mnt/ssd-1/nora/pile-40B.bin".to_string();
+    // let index_path = "/mnt/ssd-1/nora/pile-40B.idx".to_string();
+
+    let start = std::time::Instant::now();
+    let mmap_index = MemmapIndex::new(text_path, index_path).unwrap();
+    println!("Loaded! {:?}", start.elapsed());
+    let _sample = mmap_index.batch_sample(
+        vec![], 3, 2049, 100
+    );
+    println!("Time elapsed: {:?}", start.elapsed());
+}
+
+
+// extern crate memmap;
+// extern stored_array crate ndarray;
+
+// use memmap::MmapOptions;
+// use ndarray::{ArrayView2, s};
+// use std::fs::File;
+
+
+// fn load_pile_trigram_prefixes() -> ndarray::ArrayView2<'static, u32> {
+//     let file_path = "/mnt/ssd-1/pile-deduped/document.bin";
+//     let file = File::open(file_path).expect("File not found");
+//     let mmap = unsafe { MmapOptions::new().map(&file).expect("Error during the memory map creation") };
+
+//     // Interpret the mmap as an array of u32, given a file of uint32
+//     let data = unsafe {
+//         ndarray::ArrayView2::<u32>::from_shape_ptr((2049, usize::MAX), mmap.as_ptr() as *const u32)
+//     };
+
+//     // Slice the array to get the first 1024 x 2049 block
+//     let slice = data.slice(s![..1024, ..2049]);
+//     let trigram_prefixes = slice.outer_iter().map(|row| {
+//         row.windows(2)
+//            .map(|win| win.to_vec())
+//            .collect::<Vec<Vec<u80>>>()
+//     }).collect::<Vec<Vec<Vec<u32>>>>();
+
+//     trigram_prefixes
+// }
+
+// #[test]
+// fn count_next_benchmark() {
+//     // let text_path = "/mnt/ssd-1/nora/pile-10G.bin".to_string();
+//     // let index_path = "/mnt/ssd-1/nora/pile-10G.idx".to_string();
+//     let text_path = "/mnt/ssd-1/nora/pile-40B.bin".to_string();
+//     let index_path = "/mnt/ssd-1/nora/pile-40B.idx".to_string();
+    
+//     let trigram_prefixes = load_pile_trigram_prefixes();
+
+//     let start = std::time::Instant::now();
+//     let mmap_index = MemmapIndex::new(text_path, index_path).unwrap();
+//     println!("Loaded! {:?}", start.elapsed());
+//     let _sample = mmap_index.batch_count_next(
+//         pile, None
+//     );
+//     println!("Time elapsed: {:?}", start.elapsed());
+// }

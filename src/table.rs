@@ -192,13 +192,14 @@ where
 
     /// Returns an unordered list of positions where `query` starts in `text`, limiting the search to a
     /// specified range of the suffix table.
-    fn range_positions(&self, query: &[u16], range_start: usize, range_end: usize) -> &[u64] {
+    fn range_positions(&self, query: &[u16], range_start: usize, range_end: usize) -> (usize, usize) {
         if self.text.is_empty()
             || query.is_empty()
+            || range_start.eq(&range_end)
             || (query < self.suffix(range_start) && !self.suffix(range_start).starts_with(query))
             || query > self.suffix(std::cmp::max(0, range_end - 1))
         {
-            return &[];
+            return (0, 0);
         }
 
         let start = binary_search(&self.table[range_start..range_end], |&sufi| {
@@ -210,10 +211,74 @@ where
             });
 
         if start > end {
-            &[]
+            return (0, 0);
         } else {
-            &self.table[range_start + start..range_start + end]
+            // &self.table[range_start + start..range_start + end]
+            return (range_start + start, range_start + end);
         }
+    }
+
+    pub fn stack_count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+        let vocab = vocab.unwrap_or(u16::MAX) as usize + 1;
+        let mut counts: Vec<usize> = vec![0usize; vocab];
+
+        let (range_start, range_end) = self.boundaries(query);
+        let mut stack = vec![(query.to_vec(), 0, vocab, range_start, range_end)];
+
+        while let Some((mut suffixed_query, fill_start, fill_end, search_start, search_end)) = stack.pop() {
+            let fill_mid = fill_start + (fill_end - fill_start) / 2;
+            suffixed_query.push(fill_mid as u16);
+
+            let (start, end) = self.range_positions(&suffixed_query, search_start, search_end);
+            counts[fill_mid] = end - start;
+            suffixed_query.pop();
+
+            if fill_start < fill_mid {
+                stack.push((suffixed_query.clone(), fill_start, fill_mid - 1, search_start, if start != 0 { start } else { search_end }));
+            }
+            if fill_mid < fill_end {
+                stack.push((suffixed_query, fill_mid + 1, fill_end, if end != 0 { end } else { search_start }, search_end));
+            }
+        }
+        counts
+    }
+    
+    pub fn recursive_count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+        let vocab_size = vocab.unwrap_or(u16::MAX) as usize + 1;
+        let mut counts = vec![0; vocab_size];
+    
+        let (range_start, range_end) = self.boundaries(query);
+        
+        self.recursive_count_next_inner(query, &mut counts, 0, vocab_size - 1, range_start, range_end);
+    
+        counts
+    }
+
+    fn recursive_count_next_inner(
+        &self,
+        query: &[u16],
+        counts: &mut Vec<usize>,
+        fill_start: usize,
+        fill_end: usize,
+        search_start: usize,
+        search_end: usize,
+    ) {
+        if fill_start > fill_end {
+            return;
+        }
+    
+        let fill_mid = fill_start + (fill_end - fill_start) / 2;
+        let mut suffixed_query = query.to_vec();
+        suffixed_query.push(fill_mid as u16);
+    
+        let (start, end) = self.range_positions(&suffixed_query, search_start, search_end);
+        counts[fill_mid] = end - start;
+    
+        let left_end = if start != 0 { start } else { search_end };
+        let right_start = if end != 0 { end } else { search_start };
+    
+        self.recursive_count_next_inner(query, counts, fill_start, fill_mid - 1, search_start, left_end);
+        self.recursive_count_next_inner(query, counts, fill_mid + 1, fill_end, right_start, search_end);
     }
 
     /// Returns an unordered list of token counts succeeding `query`. Counts all tokens if query is empty.
@@ -221,11 +286,16 @@ where
         let mut counts: Vec<usize> = vec![0usize; vocab.unwrap_or(u16::MAX) as usize + 1];
         let mut suffixed_query = query.to_vec();
         let (range_start, range_end) = self.boundaries(query);
+        let mut range_start = range_start;
 
         for (i, count) in counts.iter_mut().enumerate() {
             suffixed_query.push(i as u16);
-            let positions = self.range_positions(&suffixed_query, range_start, range_end);
-            *count = positions.len();
+            // Print range start and range end
+            let (start, end) = self.range_positions(&suffixed_query, range_start, range_end);
+            *count = end - start;
+            if end != 0 {
+                range_start = end;
+            }
             suffixed_query.pop();
         }
         counts
@@ -234,8 +304,8 @@ where
     /// Count the occurrences of each token that directly follows each query sequence.
     pub fn batch_count_next(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
         queries
-            .into_par_iter()
-            .map(|query| self.count_next(query, vocab))
+            .into_par_iter()    
+            .map(|query| self.recursive_count_next(query, vocab))
             .collect()
     }
 
@@ -250,7 +320,7 @@ where
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
 
-            let counts: Vec<usize> = self.count_next(prev, None);
+            let counts: Vec<usize> = self.recursive_count_next(prev, None);
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
 
