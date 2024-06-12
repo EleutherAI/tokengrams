@@ -218,69 +218,6 @@ where
         }
     }
 
-    pub fn stack_count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
-        let vocab = vocab.unwrap_or(u16::MAX) as usize + 1;
-        let mut counts: Vec<usize> = vec![0usize; vocab];
-
-        let (range_start, range_end) = self.boundaries(query);
-        let mut stack = vec![(query.to_vec(), 0, vocab, range_start, range_end)];
-
-        while let Some((mut suffixed_query, fill_start, fill_end, search_start, search_end)) = stack.pop() {
-            let fill_mid = fill_start + (fill_end - fill_start) / 2;
-            suffixed_query.push(fill_mid as u16);
-
-            let (start, end) = self.range_positions(&suffixed_query, search_start, search_end);
-            counts[fill_mid] = end - start;
-            suffixed_query.pop();
-
-            if fill_start < fill_mid {
-                stack.push((suffixed_query.clone(), fill_start, fill_mid - 1, search_start, if start != 0 { start } else { search_end }));
-            }
-            if fill_mid < fill_end {
-                stack.push((suffixed_query, fill_mid + 1, fill_end, if end != 0 { end } else { search_start }, search_end));
-            }
-        }
-        counts
-    }
-    
-    pub fn recursive_count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
-        let vocab_size = vocab.unwrap_or(u16::MAX) as usize + 1;
-        let mut counts = vec![0; vocab_size];
-    
-        let (range_start, range_end) = self.boundaries(query);
-        
-        self.recursive_count_next_inner(query, &mut counts, 0, vocab_size - 1, range_start, range_end);
-    
-        counts
-    }
-
-    fn recursive_count_next_inner(
-        &self,
-        query: &[u16],
-        counts: &mut Vec<usize>,
-        fill_start: usize,
-        fill_end: usize,
-        search_start: usize,
-        search_end: usize,
-    ) {
-        if fill_start > fill_end {
-            return;
-        }
-    
-        let fill_mid = fill_start + (fill_end - fill_start) / 2;
-        let mut suffixed_query = query.to_vec();
-        suffixed_query.push(fill_mid as u16);
-    
-        let (start, end) = self.range_positions(&suffixed_query, search_start, search_end);
-        counts[fill_mid] = end - start;
-    
-        let left_end = if start != 0 { start } else { search_end };
-        let right_start = if end != 0 { end } else { search_start };
-    
-        self.recursive_count_next_inner(query, counts, fill_start, fill_mid - 1, search_start, left_end);
-        self.recursive_count_next_inner(query, counts, fill_mid + 1, fill_end, right_start, search_end);
-    }
-
     /// Returns an unordered list of token counts succeeding `query`. Counts all tokens if query is empty.
     pub fn count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         let mut counts: Vec<usize> = vec![0usize; vocab.unwrap_or(u16::MAX) as usize + 1];
@@ -301,11 +238,53 @@ where
         counts
     }
 
+    pub fn stack_count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+        let vocab_size: usize = vocab.unwrap_or(u16::MAX) as usize + 1;
+        let mut counts: Vec<usize> = vec![0usize; vocab_size];
+
+        let (range_start, range_end) = self.boundaries(query);
+
+        let query_vec = query.to_vec();
+        let mut stack = vec![(0, vocab_size - 1, range_start, range_end)];
+
+        while let Some((fill_start, fill_end, search_start, search_end)) = stack.pop() {
+            self.get_median_suffix(&mut query_vec, search_start, search_end);
+            let median_idx = self.table[search_start + (search_end - search_start) / 2];
+            let mut median_suffix = &self.text[median_idx as usize..];
+            let mut i = 0;
+            while median_suffix == query_vec {
+                if search_start == search_end {
+                    continue;
+                }
+                i += 1;
+                let median_idx = self.table[search_start + (search_end - search_start) / 2 + i];
+                median_suffix = &self.text[median_idx as usize..];
+            }
+            // Get token after query in median suffix.
+            let fill_mid = median_suffix[query_vec.len() as usize] as usize;
+
+            // let fill_mid = fill_start + (fill_end - fill_start) / 2;
+            query_vec.push(fill_mid as u16);
+
+            let (start, end) = self.range_positions(&query_vec, search_start, search_end);
+            counts[fill_mid] = end - start;
+            query_vec.pop();
+
+            if fill_start < fill_mid {
+                stack.push((query_vec.clone(), fill_start, fill_mid - 1, search_start, if start != 0 { start } else { search_end }));
+            }
+            if fill_mid < fill_end {
+                stack.push((query_vec, fill_mid + 1, fill_end, if end != 0 { end } else { search_start }, search_end));
+            }
+        }
+        counts
+    }
+    
     /// Count the occurrences of each token that directly follows each query sequence.
     pub fn batch_count_next(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
         queries
             .into_par_iter()    
-            .map(|query| self.recursive_count_next(query, vocab))
+            .map(|query| self.stack_count_next(query, vocab))
             .collect()
     }
 
@@ -320,7 +299,7 @@ where
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
 
-            let counts: Vec<usize> = self.recursive_count_next(prev, None);
+            let counts: Vec<usize> = self.stack_count_next(prev, None);
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
 
@@ -403,8 +382,8 @@ mod tests {
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(2, sa.count_next(query, Option::None)[a_index]);
-        assert_eq!(1, sa.count_next(query, Option::None)[b_index]);
+        assert_eq!(2, sa.stack_count_next(query, Option::None)[a_index]);
+        assert_eq!(1, sa.stack_count_next(query, Option::None)[b_index]);
     }
 
     #[test]
@@ -415,8 +394,8 @@ mod tests {
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(3, sa.count_next(query, Option::None)[a_index]);
-        assert_eq!(1, sa.count_next(query, Option::None)[b_index]);
+        assert_eq!(3, sa.stack_count_next(query, Option::None)[a_index]);
+        assert_eq!(1, sa.stack_count_next(query, Option::None)[b_index]);
     }
 
     #[test]
