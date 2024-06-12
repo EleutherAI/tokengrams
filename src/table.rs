@@ -227,9 +227,7 @@ where
         let mut stack = vec![(range_start, range_end)];
 
         while let Some((search_start, search_end)) = stack.pop() {
-            if search_start == search_end {
-                continue;
-            }
+            if search_start == search_end { continue; }
             
             // Get the median suffix in the table range that isn't the query itself
             let mut median_table_idx = search_start + (search_end - search_start) / 2;
@@ -250,9 +248,9 @@ where
             counts[count_mid] = end - start;
             query_vec.pop();
             assert!(start != 0 || end != 0); 
-
-            stack.push((search_start, start));
-            stack.push((end, search_end));
+            
+            if search_start < start { stack.push((search_start, start)); }
+            if end < search_end { stack.push((end, search_end)); }
         }
         counts
     }
@@ -298,9 +296,7 @@ where
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
             
-            let instant = std::time::Instant::now();
             let counts: Vec<usize> = self.stack_count_next(prev, None);
-            println!("Time to count next: {:?}", instant.elapsed());
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
 

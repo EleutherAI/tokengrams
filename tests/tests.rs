@@ -218,11 +218,10 @@ fn sample_benchmark() {
     // let text_path = "/mnt/ssd-1/nora/pile-40B.bin".to_string();
     // let index_path = "/mnt/ssd-1/nora/pile-40B.idx".to_string();
 
-    let start = std::time::Instant::now();
     let mmap_index = MemmapIndex::new(text_path, index_path).unwrap();
-    println!("Loaded! {:?}", start.elapsed());
+    let start = std::time::Instant::now();
     let _sample = mmap_index.batch_sample(
-        vec![], 3, 2049, 1
+        vec![], 3, 2049, 100
     );
     println!("Time elapsed: {:?}", start.elapsed());
 }
