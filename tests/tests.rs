@@ -15,12 +15,12 @@ fn qc<T: Testable>(f: T) {
 }
 
 
-#[test]
-fn bus_err() {
-    let tokens_path = "/mnt/ssd-1/pile_preshuffled/deduped/document.bin".to_string();
-    let output_path = "/mnt/ssd-1/lucia/table.bin".to_string();
-    let _ = MemmapIndex::build(tokens_path, output_path, true);
-}
+// #[test]
+// fn bus_err() {
+//     let tokens_path = "/mnt/ssd-1/pile_preshuffled/deduped/document.bin".to_string();
+//     let output_path = "/mnt/ssd-1/lucia/table.bin".to_string();
+//     let _ = MemmapIndex::build(tokens_path, output_path, true);
+// }
 
 // Do some testing on substring search.
 
@@ -222,7 +222,7 @@ fn sample_benchmark() {
     let mmap_index = MemmapIndex::new(text_path, index_path).unwrap();
     println!("Loaded! {:?}", start.elapsed());
     let _sample = mmap_index.batch_sample(
-        vec![], 3, 2049, 100
+        vec![], 3, 2049, 1
     );
     println!("Time elapsed: {:?}", start.elapsed());
 }

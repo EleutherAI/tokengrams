@@ -218,6 +218,46 @@ where
         }
     }
 
+    pub fn stack_count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+        let vocab_size: usize = vocab.unwrap_or(u16::MAX) as usize + 1;
+        let mut counts: Vec<usize> = vec![0usize; vocab_size];
+        let mut query_vec = query.to_vec();
+
+        let (range_start, range_end) = self.boundaries(query);
+        let mut stack = vec![(range_start, range_end)];
+
+        while let Some((search_start, search_end)) = stack.pop() {
+            if search_start == search_end {
+                continue;
+            }
+            
+            // Get the median suffix in the table range that isn't the query itself
+            let mut median_table_idx = search_start + (search_end - search_start) / 2;
+            let mut median_suffix = &self.text[self.table[median_table_idx] as usize..];
+            while median_suffix.eq(query) && median_table_idx < search_end {
+                median_table_idx = median_table_idx + (search_end - median_table_idx) / 2 + 1;
+                median_suffix = &self.text[self.table[median_table_idx] as usize..];
+            }
+            if median_table_idx == search_end {
+                continue;
+            }
+
+            let count_mid = median_suffix[query.len() as usize] as usize;
+
+            // Get count for query completion
+            query_vec.push(count_mid as u16);
+            let (start, end) = self.range_positions(&query_vec, search_start, search_end);
+            counts[count_mid] = end - start;
+            query_vec.pop();
+            assert!(start != 0 || end != 0); 
+
+            stack.push((search_start, start));
+            stack.push((end, search_end));
+        }
+        counts
+    }
+    
+
     /// Returns an unordered list of token counts succeeding `query`. Counts all tokens if query is empty.
     pub fn count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         let mut counts: Vec<usize> = vec![0usize; vocab.unwrap_or(u16::MAX) as usize + 1];
@@ -238,48 +278,7 @@ where
         counts
     }
 
-    pub fn stack_count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
-        let vocab_size: usize = vocab.unwrap_or(u16::MAX) as usize + 1;
-        let mut counts: Vec<usize> = vec![0usize; vocab_size];
 
-        let (range_start, range_end) = self.boundaries(query);
-
-        let query_vec = query.to_vec();
-        let mut stack = vec![(0, vocab_size - 1, range_start, range_end)];
-
-        while let Some((fill_start, fill_end, search_start, search_end)) = stack.pop() {
-            self.get_median_suffix(&mut query_vec, search_start, search_end);
-            let median_idx = self.table[search_start + (search_end - search_start) / 2];
-            let mut median_suffix = &self.text[median_idx as usize..];
-            let mut i = 0;
-            while median_suffix == query_vec {
-                if search_start == search_end {
-                    continue;
-                }
-                i += 1;
-                let median_idx = self.table[search_start + (search_end - search_start) / 2 + i];
-                median_suffix = &self.text[median_idx as usize..];
-            }
-            // Get token after query in median suffix.
-            let fill_mid = median_suffix[query_vec.len() as usize] as usize;
-
-            // let fill_mid = fill_start + (fill_end - fill_start) / 2;
-            query_vec.push(fill_mid as u16);
-
-            let (start, end) = self.range_positions(&query_vec, search_start, search_end);
-            counts[fill_mid] = end - start;
-            query_vec.pop();
-
-            if fill_start < fill_mid {
-                stack.push((query_vec.clone(), fill_start, fill_mid - 1, search_start, if start != 0 { start } else { search_end }));
-            }
-            if fill_mid < fill_end {
-                stack.push((query_vec, fill_mid + 1, fill_end, if end != 0 { end } else { search_start }, search_end));
-            }
-        }
-        counts
-    }
-    
     /// Count the occurrences of each token that directly follows each query sequence.
     pub fn batch_count_next(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
         queries
@@ -298,8 +297,10 @@ where
             // look at the previous (n - 1) characters to predict the n-gram completion
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
-
+            
+            let instant = std::time::Instant::now();
             let counts: Vec<usize> = self.stack_count_next(prev, None);
+            println!("Time to count next: {:?}", instant.elapsed());
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
 
