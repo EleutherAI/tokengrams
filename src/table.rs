@@ -190,15 +190,15 @@ where
         (start, end)
     }
 
-    /// Returns an unordered list of positions where `query` starts in `text`, limiting the search to a
-    /// specified range of the suffix table.
-    fn range_positions(&self, query: &[u16], range_start: usize, range_end: usize) -> &[u64] {
+    /// Determine start and end indices of items that start with `query` in the `table` range.
+    fn range_positions(&self, query: &[u16], range_start: usize, range_end: usize) -> (usize, usize) {
         if self.text.is_empty()
             || query.is_empty()
+            || range_start.eq(&range_end)
             || (query < self.suffix(range_start) && !self.suffix(range_start).starts_with(query))
             || query > self.suffix(std::cmp::max(0, range_end - 1))
         {
-            return &[];
+            return (0, 0)
         }
 
         let start = binary_search(&self.table[range_start..range_end], |&sufi| {
@@ -210,23 +210,43 @@ where
             });
 
         if start > end {
-            &[]
+            (0, 0)
         } else {
-            &self.table[range_start + start..range_start + end]
+            (range_start + start, range_start + end)
         }
     }
 
-    /// Returns an unordered list of token counts succeeding `query`. Counts all tokens if query is empty.
+    /// Count how often each token succeeds `query`.
     pub fn count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
-        let mut counts: Vec<usize> = vec![0usize; vocab.unwrap_or(u16::MAX) as usize + 1];
-        let mut suffixed_query = query.to_vec();
-        let (range_start, range_end) = self.boundaries(query);
+        let vocab_size: usize = vocab.unwrap_or(u16::MAX) as usize + 1;
+        let mut counts: Vec<usize> = vec![0usize; vocab_size];
+        let mut query_vec = query.to_vec();
 
-        for (i, count) in counts.iter_mut().enumerate() {
-            suffixed_query.push(i as u16);
-            let positions = self.range_positions(&suffixed_query, range_start, range_end);
-            *count = positions.len();
-            suffixed_query.pop();
+        let (range_start, range_end) = self.boundaries(query);
+        let mut stack = vec![(range_start, range_end)];
+
+        while let Some((search_start, search_end)) = stack.pop() {
+            if search_start == search_end { continue; }
+            
+            // Find median index of suffixes starting with `query` and ending with at least one additional token
+            let mut idx = search_start + (search_end - search_start) / 2;
+            while self.suffix(idx).eq(query) {
+                idx = idx + (search_end - idx) / 2 + 1;
+            }
+            if idx >= search_end {
+                continue;
+            }
+
+            // Count query completion
+            let token = self.suffix(idx)[query.len()];
+            query_vec.push(token);
+            let (start, end) = self.range_positions(&query_vec, search_start, search_end);
+            counts[token as usize] = end - start;
+            query_vec.pop();
+
+            // Count other completions
+            if search_start < start { stack.push((search_start, start)); }
+            if end < search_end { stack.push((end, search_end)); }
         }
         counts
     }
