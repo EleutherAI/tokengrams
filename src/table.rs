@@ -6,7 +6,7 @@ use rand::distributions::{Distribution, WeightedIndex};
 use rand::thread_rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{fmt, ops::Deref, u64};
+use std::{u64, fmt, ops::Deref, ops::Div, ops::Mul};
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 /// The table supports n-gram statistics computation and language modeling over text corpora.
@@ -171,7 +171,7 @@ where
         }
     }
 
-    /// Returns the start and end indices of query matches in text
+    /// Returns the start and end `table` indices of suffixes starting with `query`
     fn boundaries(&self, query: &[u16]) -> (usize, usize) {
         if self.text.is_empty()
             || query.is_empty()
@@ -179,6 +179,10 @@ where
             || query > self.suffix(self.len() - 1)
         {
             return (0, self.table.len());
+        }
+        // Should return (0, 0) if nothing in table starts with query
+        if (query < self.suffix(0) && !self.suffix(0).starts_with(query)) || query > self.suffix(self.len() - 1) {
+            return (0, 0);
         }
 
         let start = binary_search(&self.table, |&sufi| query <= &self.text[sufi as usize..]);
@@ -257,6 +261,85 @@ where
             .into_par_iter()
             .map(|query| self.count_next(query, vocab))
             .collect()
+    }
+
+    pub fn kneser_ney_sample(&self, query: &[u16], n: usize, k: usize) -> Result<Vec<u16>> {
+        let mut rng = thread_rng();
+        // TODO Use cross validation to estimate these
+        let delta = 1e-1;
+        let lambda = 1e-1;
+        let mut sequence = Vec::from(query);
+        
+        let unigram_counts = self.count_next(&[], None);
+
+        // we have a token and we need the bigram probs for the next token
+        // for one possible next token the probs are ~count(token, next_token) / count(token, all tokens)
+        // count(token, all tokens) = self.boundaries(token)
+        // so we need to do this for every item in the vocabulary - very expensive! but can pre-cache
+        // as a first approximation can just use the unigram counts. then we need to filter out the instances 
+        // that don't have a continuation
+
+        for _ in 0..k {
+            // look at the previous (n - 1) characters to predict the n-gram completion
+            let start = sequence.len().saturating_sub(n - 1);
+            let prev = &sequence[start..];
+            let mut counts: Vec<usize> = self.count_next(prev, None);
+
+            // Apply smoothing
+            if prev.len() != 0 {
+                // Update this to divide by the corresponding element in unigram_counts
+                // Ingredients:
+                // Number of times previous appears in the corpus after any word / number of distinct (prev, next) pairs in corpus
+                // 
+                // let smoothed_counts: Vec<f64> = counts.iter().enumerate().map(|(i, &count)| {
+                //     let unigram_count = unigram_counts[i] as f64;
+                //     return ((count as f64 - delta) / unigram_counts[i] as f64).max(0.0) + lambda * unigram_count;
+                // }).collect();
+
+                // Try using https://medium.com/@dennyc/a-simple-numerical-example-for-kneser-ney-smoothing-nlp-4600addf38b8
+                // Both the wikipedia page and this article use frequency and count interchangeably. I'll use count for simplicity
+                // TODO check that everything works out the same and delta is still correct in range
+                let (prefix_start, prefix_end) = self.boundaries(prev);
+                let prefix_count = (prefix_end - prefix_start) as f64;
+                let mut prev_vec = prev.to_vec();
+                let smoothed_counts: Vec<f64> = counts.iter().enumerate().map(|(i, &count)| {                    
+                    let suffix_count = {
+                        prev_vec.push(i as u16);
+                        let (start, end) = self.boundaries(prev_vec);
+                        prev_vec.pop();
+                        (end - start) as f64
+                    };
+                    let first_term = suffix_count.div(prefix_count);
+                    
+                    let num_unique_suffixes = counts.iter().filter(|&&c| c > 0).count() as f64;
+                    let lambda = delta.div(prefix_count).mul(num_unique_suffixes);
+                    
+                    let unigram_count = unigram_counts[i] as f64;
+                    let num_unique_suffix_prefixes; // as a fn of (i, n, table), need to find every n-gram that ends with i 
+                    // if there are no n-grams that end with i, we look for (n-1)-grams and so on until we find a match
+                    // (convert to f using) the number of n-grams in the table, which is the table len - count(suffixes of len < n)
+                    // Ensure this is the same as wikipedia version because it's going to be a real pain to implement
+                    
+                    let first_term = {
+                        if n == 2 {
+                            // first_term is different in the special bigram case
+                            unimplemented!("Bigram case not implemented");
+                        }
+                        (count as f64 - delta).max(0.0).div(prefix_count)
+                    };
+                    let p_continuation = num_unique_suffix_prefixes.div(unigram_count);
+
+                    return first_term + lambda.mul(p_continuation);
+                }).collect();
+            }
+            
+            let dist = WeightedIndex::new(&counts)?;
+            let sampled_index = dist.sample(&mut rng);
+
+            sequence.push(sampled_index as u16);
+        }
+
+        Ok(sequence)
     }
 
     /// Autoregressively sample k characters from a conditional distribution based
