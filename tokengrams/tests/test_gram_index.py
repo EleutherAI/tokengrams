@@ -40,7 +40,7 @@ def test_gram_index(tokens: list[int]):
         check_gram_index(index, tokens)
 
         with NamedTemporaryFile() as idx:
-            index = MemmapIndex.build(f.name, idx.name, False)
+            index = MemmapIndex.build(f.name, idx.name)
             check_gram_index(index, tokens)
 
             index = MemmapIndex(f.name, idx.name)

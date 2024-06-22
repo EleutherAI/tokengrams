@@ -202,3 +202,15 @@ fn prop_sample() {
 
     qc(prop as fn(String) -> bool);
 }
+
+#[test]
+fn prop_sais() {
+    fn prop(s: String) -> bool {
+        let s = s.encode_utf16().collect::<Vec<_>>();
+        let table = SuffixTable::new(s.clone(), false);
+        let sais_table = SuffixTable::new_sais(s.clone());
+
+        table == sais_table
+    }
+    qc(prop as fn(String) -> bool);
+}

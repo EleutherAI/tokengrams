@@ -44,7 +44,7 @@ class MemmapIndex:
         """Load a prebuilt memory-mapped index from a pair of files."""
 
     @staticmethod
-    def build(token_file: str, index_file: str, verbose: bool) -> "MemmapIndex":
+    def build(token_file: str, index_file: str) -> "MemmapIndex":
         """Build a memory-mapped index from a token file."""
     
     def contains(self, query: list[int]) -> bool:

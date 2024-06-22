@@ -1,10 +1,10 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use rayon::prelude::*;
 use std::fs::{File, OpenOptions};
 use std::time::Instant;
 
 use crate::mmap_slice::{MmapSlice, MmapSliceMut};
-use crate::par_quicksort::par_sort_unstable_by_key;
 use crate::table::SuffixTable;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
@@ -29,7 +29,7 @@ impl MemmapIndex {
     }
 
     #[staticmethod]
-    pub fn build(text_path: String, table_path: String, verbose: bool) -> PyResult<Self> {
+    pub fn build(text_path: String, table_path: String) -> PyResult<Self> {
         // Memory map the text as read-only
         let text_mmap = MmapSlice::new(&File::open(&text_path)?)?;
 
@@ -73,10 +73,8 @@ impl MemmapIndex {
                 // The unstable algorithm is critical for avoiding out-of-memory errors, since it does
                 // not allocate any more memory than the input and output slices.
                 println!("Sorting indices...");
-                par_sort_unstable_by_key(
-                    table_mmap.as_slice_mut(),
+                table_mmap.par_sort_unstable_by_key(
                     |&i| &text_mmap[i as usize..],
-                    verbose,
                 );
             });
         println!("Time elapsed: {:?}", start.elapsed());

@@ -1,6 +1,6 @@
 extern crate utf16_literal;
 
-use crate::par_quicksort::par_sort_unstable_by_key;
+use crate::sais::sais_table;
 use anyhow::Result;
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::thread_rng;
@@ -34,11 +34,24 @@ impl SuffixTable<Box<[u16]>, Box<[u64]>> {
         // sufficiently small inputs, so we don't need to worry about
         // parallelism overhead here.
         let mut table: Vec<_> = (0..text.len() as u64).collect();
-        par_sort_unstable_by_key(&mut table[..], |&i| &text[i as usize..], verbose);
+        table.par_sort_unstable_by_key(|&i| &text[i as usize..]);
 
         SuffixTable {
             text,
             table: table.into(),
+        }
+    }
+
+    pub fn new_sais<S>(src: S) -> Self
+    where
+        S: Into<Box<[u16]>>,
+    {
+        let text = src.into();
+        let table = sais_table(&text).into();
+
+        SuffixTable {
+            text,
+            table,
         }
     }
 }
