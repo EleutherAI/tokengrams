@@ -1,3 +1,32 @@
+use funty::Unsigned;
+use rayon::prelude::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Essentially np.bincount(data) in parallel.
+pub fn par_bincount<'a, I, T>(data: &'a I) -> Vec<usize>
+where
+    I: IntoParallelRefIterator<'a, Item = T>,
+    T: Unsigned,
+{
+    // Find the maximum value in the data
+    let max = match data.par_iter().max() {
+        Some(m) => m,
+        None => return Vec::new(),
+    };
+
+    // Create a vector of atomic counters
+    let mut counts = Vec::with_capacity(max.as_usize() + 1);
+    for _ in 0..=max.as_usize() {
+        counts.push(AtomicUsize::new(0));
+    }
+
+    // Increment the counters in parallel
+    data.par_iter().for_each(|x| {
+        counts[x.as_usize()].fetch_add(1, Ordering::Relaxed);
+    });
+    counts.into_iter().map(|c| c.into_inner()).collect()
+}
+
 /// Return a zero-copy view of the given slice with the given type.
 /// The resulting view has the same lifetime as the provided slice.
 #[inline]

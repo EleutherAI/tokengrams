@@ -50,6 +50,34 @@ impl InMemoryIndex {
         })
     }
 
+    #[staticmethod]
+    pub fn from_token_file_sais(
+        path: String,
+        token_limit: Option<usize>,
+    ) -> PyResult<Self> {
+        let mut buffer = Vec::new();
+        let mut file = File::open(&path)?;
+
+        if let Some(max_tokens) = token_limit {
+            // Limit on the number of tokens to consider is provided
+            let max_bytes = max_tokens * std::mem::size_of::<u16>();
+            file.take(max_bytes as u64).read_to_end(&mut buffer)?;
+        } else {
+            file.read_to_end(&mut buffer)?;
+        };
+
+        Ok(InMemoryIndex {
+            table: SuffixTable::new_sais(transmute_slice(buffer.as_slice())),
+        })
+    }
+
+    #[staticmethod]
+    pub fn sais(tokens: Vec<u16>) -> Self {
+        InMemoryIndex {
+            table: SuffixTable::new_sais(tokens),
+        }
+    }
+
     pub fn contains(&self, query: Vec<u16>) -> bool {
         self.table.contains(&query)
     }

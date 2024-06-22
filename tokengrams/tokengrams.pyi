@@ -7,6 +7,10 @@ class InMemoryIndex:
     @staticmethod
     def from_token_file(path: str, verbose: bool, token_limit: int | None) -> "InMemoryIndex":
         """Construct a `InMemoryIndex` from a file containing raw little-endian tokens."""
+    
+    @staticmethod
+    def from_token_file_sais(path: str, verbose: bool, token_limit: int | None) -> "InMemoryIndex":
+        """Construct a `InMemoryIndex` from a file containing raw little-endian tokens."""
 
     def contains(self, query: list[int]) -> bool:
         """Check if `query` has nonzero count. Faster than `count(query) > 0`."""
@@ -46,7 +50,7 @@ class MemmapIndex:
     @staticmethod
     def build(token_file: str, index_file: str) -> "MemmapIndex":
         """Build a memory-mapped index from a token file."""
-    
+
     def contains(self, query: list[int]) -> bool:
         """Check if `query` has nonzero count. Faster than `count(query) > 0`."""
     

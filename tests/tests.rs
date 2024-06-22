@@ -15,7 +15,6 @@ fn qc<T: Testable>(f: T) {
 
 
 // Do some testing on substring search.
-
 #[test]
 fn empty_find_empty() {
     let sa = sais("");

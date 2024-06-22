@@ -32,6 +32,7 @@ extern crate utf16_literal;
 use rayon::prelude::*;
 use std::u64;
 
+use crate::util::par_bincount;
 use self::SuffixType::{Ascending, Descending, Valley};
 
 
@@ -55,6 +56,7 @@ fn sais<T: Text + ?Sized>(sa: &mut [u64], stypes: &mut SuffixTypes, bins: &mut B
     }
     sa.fill(0);
 
+    // TODO: Parallelize this step across batches / chunks / documents in the corpus
     stypes.compute(text);
     bins.find_sizes((0..text.len()).map(|i| text.char_at(i)));
     bins.find_tail_pointers();
