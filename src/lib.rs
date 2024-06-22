@@ -9,6 +9,7 @@ use pyo3::prelude::*;
 mod in_memory_index;
 mod memmap_index;
 mod par_quicksort;
+mod sa_is;
 mod table;
 mod util;
 
