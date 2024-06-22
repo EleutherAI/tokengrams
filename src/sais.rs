@@ -34,18 +34,6 @@ use std::u64;
 
 use self::SuffixType::{Ascending, Descending, Valley};
 
- 
-#[allow(dead_code)]
-fn naive_table(text: &[u16]) -> Vec<u64> {
-    // assert!(text.len() <= u64::MAX as usize);
-    let mut table = vec![0u64; text.len()];
-    for i in 0..table.len() {
-        table[i] = i as u64;
-    }
-    table.sort_by(|&a, &b| text[a as usize..].cmp(&text[b as usize..]));
-    table
-}
-
 
 pub fn sais_table(text: &[u16]) -> Vec<u64> {
     let mut sa = vec![0u64; text.len()];
@@ -77,7 +65,6 @@ fn sais<T: Text + ?Sized>(sa: &mut [u64], stypes: &mut SuffixTypes, bins: &mut B
             bins.tail_insert(sa, i, text.char_at(i));
         }
     }
-
     bins.find_head_pointers();
 
     // Insert the descending suffixes.
@@ -191,7 +178,6 @@ fn sais<T: Text + ?Sized>(sa: &mut [u64], stypes: &mut SuffixTypes, bins: &mut B
         sa[i as usize] = 0;
         bins.tail_insert(sa, sufi, text.char_at(sufi));
     }
-
     bins.find_head_pointers();
 
     let (lasti, lastc) = text.prev(text.len());
@@ -207,7 +193,6 @@ fn sais<T: Text + ?Sized>(sa: &mut [u64], stypes: &mut SuffixTypes, bins: &mut B
             }
         }
     }
-
     bins.find_tail_pointers();
 
     for i in (0..sa.len()).rev() {

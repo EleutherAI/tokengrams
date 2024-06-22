@@ -6,7 +6,7 @@ use tokengrams::SuffixTable;
 use utf16_literal::utf16;
 
 fn sais(text: &str) -> SuffixTable {
-    SuffixTable::new(text.encode_utf16().collect::<Vec<_>>(), false)
+    SuffixTable::new(text.encode_utf16().collect::<Vec<_>>())
 }
 
 fn qc<T: Testable>(f: T) {
@@ -135,7 +135,7 @@ fn prop_contains() {
 fn prop_positions() {
     fn prop(s: String, c: u16) -> bool {
         let s = s.encode_utf16().collect::<Vec<_>>();
-        let table = SuffixTable::new(s.clone(), false);
+        let table = SuffixTable::new(s.clone());
 
         let got = table.positions(&[c]);
         for (i, c_) in s.into_iter().enumerate() {
@@ -190,7 +190,7 @@ fn prop_sample() {
             return true;
         }
         
-        let table = SuffixTable::new(s.clone(), false);
+        let table = SuffixTable::new(s.clone());
 
         let query = match s.get(0..1) {
             Some(slice) => slice,
@@ -207,7 +207,7 @@ fn prop_sample() {
 fn prop_sais() {
     fn prop(s: String) -> bool {
         let s = s.encode_utf16().collect::<Vec<_>>();
-        let table = SuffixTable::new(s.clone(), false);
+        let table = SuffixTable::new(s.clone());
         let sais_table = SuffixTable::new_sais(s.clone());
 
         table == sais_table

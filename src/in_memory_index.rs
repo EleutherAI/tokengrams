@@ -16,9 +16,9 @@ pub struct InMemoryIndex {
 #[pymethods]
 impl InMemoryIndex {
     #[new]
-    pub fn new(_py: Python, tokens: Vec<u16>, verbose: bool) -> Self {
+    pub fn new(_py: Python, tokens: Vec<u16>) -> Self {
         InMemoryIndex {
-            table: SuffixTable::new(tokens, verbose),
+            table: SuffixTable::new(tokens),
         }
     }
 
@@ -32,7 +32,6 @@ impl InMemoryIndex {
     #[staticmethod]
     pub fn from_token_file(
         path: String,
-        verbose: bool,
         token_limit: Option<usize>,
     ) -> PyResult<Self> {
         let mut buffer = Vec::new();
@@ -47,7 +46,7 @@ impl InMemoryIndex {
         };
 
         Ok(InMemoryIndex {
-            table: SuffixTable::new(transmute_slice(buffer.as_slice()), verbose),
+            table: SuffixTable::new(transmute_slice(buffer.as_slice())),
         })
     }
 

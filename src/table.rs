@@ -20,7 +20,7 @@ pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
 impl SuffixTable<Box<[u16]>, Box<[u64]>> {
     /// Creates a new suffix table for `text` in `O(n log n)` time and `O(n)`
     /// space.
-    pub fn new<S>(src: S, verbose: bool) -> Self
+    pub fn new<S>(src: S) -> Self
     where
         S: Into<Box<[u16]>>,
     {
@@ -355,7 +355,7 @@ mod tests {
     use utf16_literal::utf16;
 
     fn sais(text: &str) -> SuffixTable {
-        SuffixTable::new(text.encode_utf16().collect::<Vec<_>>(), false)
+        SuffixTable::new(text.encode_utf16().collect::<Vec<_>>())
     }
 
     #[test]
