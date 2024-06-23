@@ -45,7 +45,7 @@ pub fn sais_table(text: &[u16]) -> Vec<u64> {
 }
 
 
-fn sais<T: Text + ?Sized>(sa: &mut [u64], stypes: &mut SuffixTypes, bins: &mut Bins, text: &T) {
+fn sais<T: SuffixArray + ?Sized>(sa: &mut [u64], stypes: &mut SuffixTypes, bins: &mut Bins, text: &T) {
     match text.len() {
         0 => return,
         1 => {
@@ -112,22 +112,21 @@ fn sais<T: Text + ?Sized>(sa: &mut [u64], stypes: &mut SuffixTypes, bins: &mut B
         num_wstrs = 1;
     }
 
-    let mut prev_sufi = 0u64; // the first suffix can never be a valley
+    // Sort the suffixes
+    par_sort_suffixes(sa, text, stypes, num_wstrs);
+    
+    // Assign names
     let mut name = 0u64;
-    // We set our "name buffer" to be max u64 values. Since there are at
-    // most n/2 wstrings, a name can never be greater than n/2.
+    let mut prev_sufi = sa[0];
     sa[num_wstrs as usize..].fill(u64::MAX);
 
     for i in 0..num_wstrs {
         let cur_sufi = sa[i as usize];
-        if prev_sufi == 0 || !text.wstring_equal(stypes, cur_sufi, prev_sufi) {
+        if i > 0 && !text.wstring_equal(stypes, cur_sufi, prev_sufi) {
             name += 1;
-            prev_sufi = cur_sufi;
         }
-        // This divide-by-2 trick only works because it's impossible to have
-        // two wstrings start at adjacent locations (they must at least be
-        // separated by a single descending character).
-        sa[(num_wstrs + (cur_sufi / 2)) as usize] = name - 1;
+        sa[(num_wstrs + (cur_sufi / 2)) as usize] = name;
+        prev_sufi = cur_sufi;
     }
 
     // We've inserted the lexical names into the latter half of the suffix
@@ -208,6 +207,35 @@ fn sais<T: Text + ?Sized>(sa: &mut [u64], stypes: &mut SuffixTypes, bins: &mut B
     }
 }
 
+fn par_sort_suffixes<T: SuffixArray + Sync + ?Sized>(
+    sa: &mut [u64],
+    text: &T,
+    stypes: &SuffixTypes,
+    num_wstrs: u64
+) {
+    sa[..num_wstrs as usize].par_sort_unstable_by(|&a, &b| {
+        let mut a_iter = (a..).map(|i| text.char_at(i));
+        let mut b_iter = (b..).map(|i| text.char_at(i));
+        let mut chars_compared = 0u64;
+        
+        loop {
+            match (a_iter.next(), b_iter.next()) {
+                (Some(a_char), Some(b_char)) => {
+                    if a_char != b_char {
+                        return a_char.cmp(&b_char);
+                    }
+                    chars_compared += 1;
+                    if stypes.is_valley(a + chars_compared) || stypes.is_valley(b + chars_compared) {
+                        return std::cmp::Ordering::Equal;
+                    }
+                },
+                (None, Some(_)) => return std::cmp::Ordering::Less,
+                (Some(_), None) => return std::cmp::Ordering::Greater,
+                (None, None) => return std::cmp::Ordering::Equal,
+            }
+        }
+    });
+}
  
  struct SuffixTypes {
     types: Vec<SuffixType>,
@@ -228,7 +256,7 @@ impl SuffixTypes {
         }
     }
 
-    fn compute<T: Text + ?Sized>(&mut self, text: &T) {
+    fn compute<T: SuffixArray + ?Sized>(&mut self, text: &T) {
         if text.len() == 0 {
             return;
         }
@@ -253,6 +281,7 @@ impl SuffixTypes {
             lasti = i;
         }
     }
+   
 
     #[inline]
     fn ty(&self, i: u64) -> SuffixType {
@@ -407,7 +436,7 @@ impl Bins {
 ///
 /// This enables us to expose a common interface between a `Vec<u16>` (the token values) and
 /// a `Vec<u64>`. Specifically, a `Vec<u64>` is used for lexical renaming.
-trait Text {
+trait SuffixArray: Sync {
 
     fn len(&self) -> u64;
 
@@ -419,7 +448,7 @@ trait Text {
 }
  
 
-impl Text for [u16] {
+impl SuffixArray for [u16] {
     fn len(&self) -> u64 {
         self.len() as u64
     }
@@ -455,7 +484,7 @@ impl Text for [u16] {
 
 struct LexNames<'s>(&'s [u64]);
 
-impl<'s> Text for LexNames<'s> {
+impl<'s> SuffixArray for LexNames<'s> {
 
     #[inline]
     fn len(&self) -> u64 {

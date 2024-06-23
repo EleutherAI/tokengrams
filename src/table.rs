@@ -110,7 +110,7 @@ where
     /// use tokengrams::SuffixTable;
     /// use utf16_literal::utf16;
     ///
-    /// let sa = SuffixTable::new(utf16!("The quick brown fox.").to_vec(), false);
+    /// let sa = SuffixTable::new(utf16!("The quick brown fox.").to_vec());
     /// assert!(sa.contains(utf16!("quick")));
     /// ```
     #[allow(dead_code)]
@@ -147,7 +147,7 @@ where
     /// use tokengrams::SuffixTable;
     /// use utf16_literal::utf16;
     ///
-    /// let sa = SuffixTable::new(utf16!("The quick brown fox was very quick.").to_vec(), false);
+    /// let sa = SuffixTable::new(utf16!("The quick brown fox was very quick.").to_vec());
     /// assert_eq!(sa.positions(utf16!("quick")), &[4, 29]);
     /// ```
     #[allow(dead_code)]
