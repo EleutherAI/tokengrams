@@ -11,6 +11,7 @@ mod memmap_index;
 mod par_quicksort;
 mod table;
 mod util;
+mod merge;
 
 #[pymodule]
 fn tokengrams(_py: Python, m: &PyModule) -> PyResult<()> {
