@@ -202,3 +202,15 @@ fn prop_sample() {
 
     qc(prop as fn(String) -> bool);
 }
+
+#[test]
+fn kneser_ney_sample() {
+    let sa = sais("aaabbabababcbababcbabcbabcccbbab");
+    let a = utf16!("a");
+    let c = utf16!("c");
+    let vocab = c[0] + 1;
+
+    let tokens = sa.kneser_ney_sample(a, 3, 10, Some(vocab)).unwrap();
+    assert_eq!(tokens.len(), 11);
+    assert_eq!(tokens, vec![utf16!("a")[0]; 11]);
+}
