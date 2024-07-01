@@ -7,6 +7,7 @@ use rand::thread_rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{u64, fmt, ops::Deref, ops::Div, ops::Mul};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 /// The table supports n-gram statistics computation and language modeling over text corpora.
@@ -216,13 +217,43 @@ where
         if start > end {
             (0, 0)
         } else {
-            (range_start + start, range_start + end)
+            return (range_start + start, range_start + end);
         }
+    }
+
+    /// Count how often each token precedes `query`.
+    fn count_prev(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+        let vocab_size: usize = match vocab {
+            Some(size) => size.into(),
+            None => u16::MAX as usize + 1,
+        };
+        let (range_start, range_end) = self.boundaries(query);
+
+        // linear scan over range, increment count for previous token for each item. use rayon to parallelise
+        let mut counts = Vec::with_capacity(vocab_size);
+        for _ in 0..vocab_size {
+            counts.push(AtomicUsize::new(0));
+        }
+
+        (range_start..range_end)
+            .into_par_iter()
+            .for_each(|idx| {
+                let prev_token = self.text[self.table[idx] as usize - 1];
+                counts[prev_token as usize].fetch_add(1, Ordering::Relaxed);
+            });
+
+        // To collect counts, you'll need to convert AtomicUsize to usize
+        counts.into_iter()
+            .map(|atomic| atomic.load(Ordering::Relaxed))
+            .collect()
     }
 
     /// Count how often each token succeeds `query`.
     pub fn count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
-        let vocab_size: usize = vocab.unwrap_or(u16::MAX) as usize + 1;
+        let vocab_size: usize = match vocab {
+            Some(size) => size.into(),
+            None => u16::MAX as usize + 1,
+        };
         let mut counts: Vec<usize> = vec![0usize; vocab_size];
         let mut query_vec = query.to_vec();
 
@@ -263,77 +294,70 @@ where
             .collect()
     }
 
+    pub fn kneser_ney_probs(&self, query: &[u16], unigram_counts: &[usize]) -> Vec<f64> {
+        // TODO unigram case
+        if query.len() == 0 {
+            unimplemented!()
+        }
+
+        // TODO Use cross-validation to estimate
+        let delta = 1e-1;
+        
+        let p_continuations = if query.len() < 2 {
+            println!("base");
+            unigram_counts.into_iter().map(|x| *x as f64 / unigram_counts.iter().sum::<usize>() as f64).collect()
+        } else {
+            println!("recurse");
+            self.kneser_ney_probs(&query[1..], unigram_counts)
+        };
+        // TODO investigate why sums to 0.983, possibly increase precision
+        assert!((p_continuations.iter().sum::<f64>() - 1.0).abs() < 0.2, "Probabilities do not sum to 1 {}", p_continuations.iter().sum::<f64>());
+
+        let mut counts: Vec<usize> = self.count_next(query, None);
+        let mut offset = 0;
+        while counts.iter().sum::<usize>() == 0 {
+            offset += 1;
+            counts = self.count_next(&query[offset..], None);
+        }
+
+        let (start, end) = self.boundaries(query);
+        let query_count = (end - start) as f64;
+        let num_unique_suffixes = counts.iter().filter(|&&c| c > 0).count() as f64;
+        let lambda = delta.div(query_count).mul(num_unique_suffixes);
+        
+        let smoothed_counts: Vec<f64> = counts.iter().enumerate().map(|(i, &count)| {
+            let prev_vec = [query, &[i as u16]].concat();
+            let first_term = {
+                let (numer_count, div_count) = if offset > 0 { 
+                    let numer_count = self.count_prev(prev_vec.as_slice(), None).iter().filter(|&&x| x != 0).count();
+                    let div_count = self.count_prev(&query[offset..], None).iter().filter(|&&x| x != 0).count();
+                    (numer_count, div_count)
+                } else { 
+                    (count, counts.iter().sum::<usize>())
+                };
+
+                (numer_count as f64 - delta).max(0.0).div(div_count as f64)
+            };
+
+            return first_term + lambda.mul(p_continuations[i]);
+        }).collect();
+        smoothed_counts
+    }
+
+    /// Autoregressively sample k characters from a smoothed n-gram model
     pub fn kneser_ney_sample(&self, query: &[u16], n: usize, k: usize) -> Result<Vec<u16>> {
         let mut rng = thread_rng();
-        // TODO Use cross validation to estimate these
-        let delta = 1e-1;
-        let lambda = 1e-1;
         let mut sequence = Vec::from(query);
-        
+
+        // TODO lucia filter out any instances that are succeeded by an EOS token
         let unigram_counts = self.count_next(&[], None);
 
-        // we have a token and we need the bigram probs for the next token
-        // for one possible next token the probs are ~count(token, next_token) / count(token, all tokens)
-        // count(token, all tokens) = self.boundaries(token)
-        // so we need to do this for every item in the vocabulary - very expensive! but can pre-cache
-        // as a first approximation can just use the unigram counts. then we need to filter out the instances 
-        // that don't have a continuation
-
         for _ in 0..k {
-            // look at the previous (n - 1) characters to predict the n-gram completion
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
-            let mut counts: Vec<usize> = self.count_next(prev, None);
-
-            // Apply smoothing
-            if prev.len() != 0 {
-                // Update this to divide by the corresponding element in unigram_counts
-                // Ingredients:
-                // Number of times previous appears in the corpus after any word / number of distinct (prev, next) pairs in corpus
-                // 
-                // let smoothed_counts: Vec<f64> = counts.iter().enumerate().map(|(i, &count)| {
-                //     let unigram_count = unigram_counts[i] as f64;
-                //     return ((count as f64 - delta) / unigram_counts[i] as f64).max(0.0) + lambda * unigram_count;
-                // }).collect();
-
-                // Try using https://medium.com/@dennyc/a-simple-numerical-example-for-kneser-ney-smoothing-nlp-4600addf38b8
-                // Both the wikipedia page and this article use frequency and count interchangeably. I'll use count for simplicity
-                // TODO check that everything works out the same and delta is still correct in range
-                let (prefix_start, prefix_end) = self.boundaries(prev);
-                let prefix_count = (prefix_end - prefix_start) as f64;
-                let mut prev_vec = prev.to_vec();
-                let smoothed_counts: Vec<f64> = counts.iter().enumerate().map(|(i, &count)| {                    
-                    let suffix_count = {
-                        prev_vec.push(i as u16);
-                        let (start, end) = self.boundaries(prev_vec);
-                        prev_vec.pop();
-                        (end - start) as f64
-                    };
-                    let first_term = suffix_count.div(prefix_count);
-                    
-                    let num_unique_suffixes = counts.iter().filter(|&&c| c > 0).count() as f64;
-                    let lambda = delta.div(prefix_count).mul(num_unique_suffixes);
-                    
-                    let unigram_count = unigram_counts[i] as f64;
-                    let num_unique_suffix_prefixes; // as a fn of (i, n, table), need to find every n-gram that ends with i 
-                    // if there are no n-grams that end with i, we look for (n-1)-grams and so on until we find a match
-                    // (convert to f using) the number of n-grams in the table, which is the table len - count(suffixes of len < n)
-                    // Ensure this is the same as wikipedia version because it's going to be a real pain to implement
-                    
-                    let first_term = {
-                        if n == 2 {
-                            // first_term is different in the special bigram case
-                            unimplemented!("Bigram case not implemented");
-                        }
-                        (count as f64 - delta).max(0.0).div(prefix_count)
-                    };
-                    let p_continuation = num_unique_suffix_prefixes.div(unigram_count);
-
-                    return first_term + lambda.mul(p_continuation);
-                }).collect();
-            }
+            let probs = self.kneser_ney_probs(prev, unigram_counts.as_slice());
             
-            let dist = WeightedIndex::new(&counts)?;
+            let dist = WeightedIndex::new(&probs)?;
             let sampled_index = dist.sample(&mut rng);
 
             sequence.push(sampled_index as u16);
@@ -462,5 +486,26 @@ mod tests {
 
         assert_eq!(2, sa.batch_count_next(&queries, Option::None)[0][a_index]);
         assert_eq!(1, sa.batch_count_next(&queries, Option::None)[0][b_index]);
+    }
+
+    #[test]
+    fn kneser_key_probs() {
+        let sa = sais("aaa");
+        let a = utf16!("a");
+        let unigram_counts = sa.count_next(&[], None);
+        let probs = sa.kneser_ney_probs(a, unigram_counts.as_slice());
+        
+        let tolerance = 0.2;
+        let residual = (probs.iter().sum::<f64>() - 1.0).abs();
+        println!("{:?}", residual);
+        assert!(residual < tolerance);
+    }
+
+    #[test]
+    fn count_prev_exists() {
+        let sa = sais("aabab");
+        let b = utf16!("b");
+        let _counts = sa.count_prev(b, None);
+        assert_eq!(2, _counts[utf16!("a")[0] as usize]);
     }
 }

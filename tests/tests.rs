@@ -202,3 +202,12 @@ fn prop_sample() {
 
     qc(prop as fn(String) -> bool);
 }
+
+#[test]
+fn kneser_key_sample() {
+    let sa = sais("aaa");
+    let a = utf16!("a");
+    let tokens = sa.kneser_ney_sample(a, 3, 10).unwrap();
+    assert_eq!(tokens.len(), 11);
+    assert_eq!(tokens, vec![utf16!("a")[0]; 11]);
+}
