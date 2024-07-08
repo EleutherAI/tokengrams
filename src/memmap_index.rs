@@ -108,9 +108,9 @@ impl MemmapIndex {
         self.table.batch_count_next(&queries, vocab)
     }
 
-    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
+    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>, PyErr> {
         self.table
-            .sample(&query, n, k)
+            .sample(&query, n, k, vocab)
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
@@ -119,10 +119,34 @@ impl MemmapIndex {
         query: Vec<u16>,
         n: usize,
         k: usize,
-        num_samples: usize,
+        n_samples: usize,
+        vocab: Option<u16>,
     ) -> Result<Vec<Vec<u16>>, PyErr> {
         self.table
-            .batch_sample(&query, n, k, num_samples)
+            .batch_sample(&query, n, k, n_samples, vocab)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    pub fn kneser_ney_probs(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
+        self.table.kneser_ney_probs(&query, vocab)
+    }
+
+    pub fn kneser_ney_sample(&self, query: Vec<u16>, n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>, PyErr> {
+        self.table
+            .kneser_ney_sample(&query, n, k, vocab)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    pub fn kneser_ney_batch_sample(
+        &self,
+        query: Vec<u16>,
+        n: usize,
+        k: usize,
+        n_samples: usize,
+        vocab: Option<u16>,
+    ) -> Result<Vec<Vec<u16>>, PyErr> {
+        self.table
+            .kneser_ney_batch_sample(&query, n, k, n_samples, vocab)
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 

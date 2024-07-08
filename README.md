@@ -64,7 +64,7 @@ print(index.batch_count_next(
 print(index.sample(tokenizer.encode("hello world"), n=5, k=10))
 
 # Parallelize over sequence generations
-print(index.batch_sample(tokenizer.encode("hello world"), n=5, k=10, num_samples=20))
+print(index.batch_sample(tokenizer.encode("hello world"), n=5, k=10, n_samples=20))
 
 # Query whether the corpus contains "hello world"
 print(index.contains(tokenizer.encode("hello world")))

@@ -152,7 +152,7 @@ fn prop_positions() {
 fn sample_query_exists() {
     let sa = sais("aaa");
     let a = utf16!("a");
-    let tokens = sa.sample(a, 3, 10).unwrap();
+    let tokens = sa.sample(a, 3, 10, None).unwrap();
     assert_eq!(*tokens.last().unwrap(), a[0]);
 }
 
@@ -160,7 +160,7 @@ fn sample_query_exists() {
 fn sample_empty_query_exists() {
     let sa = sais("aaa");
     let empty_query = utf16!("");
-    let tokens = sa.sample(empty_query, 3, 10).unwrap();
+    let tokens = sa.sample(empty_query, 3, 10, None).unwrap();
     assert_eq!(*tokens.last().unwrap(), utf16!("a")[0]);
 }
 
@@ -168,7 +168,7 @@ fn sample_empty_query_exists() {
 fn batch_sample_query_exists() {
     let sa = sais("aaa");
     let a = utf16!("a");
-    let seqs = sa.batch_sample(a, 3, 10, 20).unwrap();
+    let seqs = sa.batch_sample(a, 3, 10, 20, None).unwrap();
     assert_eq!(*seqs[0].last().unwrap(), a[0]);
     assert_eq!(*seqs[19].last().unwrap(), a[0]);
 }
@@ -177,7 +177,7 @@ fn batch_sample_query_exists() {
 fn batch_sample_empty_query_exists() {
     let sa = sais("aaa");
     let empty_query = utf16!("");
-    let seqs = sa.batch_sample(empty_query, 3, 10, 20).unwrap();
+    let seqs = sa.batch_sample(empty_query, 3, 10, 20, None).unwrap();
     assert_eq!(*seqs[0].last().unwrap(), utf16!("a")[0]);
     assert_eq!(*seqs[19].last().unwrap(), utf16!("a")[0]);
 }
@@ -196,7 +196,7 @@ fn prop_sample() {
             Some(slice) => slice,
             None => &[],
         };
-        let got = table.sample(query, 2, 1).unwrap();
+        let got = table.sample(query, 2, 1, None).unwrap();
         s.contains(got.first().unwrap())
     }
 
@@ -205,12 +205,53 @@ fn prop_sample() {
 
 #[test]
 fn kneser_ney_sample() {
-    let sa = sais("aaabbabababcbababcbabcbabcccbbab");
+    let mut sa = sais("aabbccabccba");
+    sa.compute_kn_unigram_probs();
     let a = utf16!("a");
-    let c = utf16!("c");
-    let vocab = c[0] + 1;
 
-    let tokens = sa.kneser_ney_sample(a, 3, 10, Some(vocab)).unwrap();
+    let tokens = sa.kneser_ney_sample(a, 3, 10, None).unwrap();
     assert_eq!(tokens.len(), 11);
-    assert_eq!(tokens, vec![utf16!("a")[0]; 11]);
+}
+
+#[test]
+fn kneser_key_probs_empty_query_exists() {
+    let mut sa = sais("aaa");
+    // sa.kn_cache = Some(vec![1.0 / vocab as f64; vocab as usize]);
+    sa.compute_kn_unigram_probs();
+    let vocab = utf16!("a")[0] + 1;
+    let probs = sa.kneser_ney_probs(&[], Some(vocab));
+    
+    let residual = (probs.iter().sum::<f64>() - 1.0).abs();
+    assert!(residual < 1e-4);
+}
+
+#[test]
+fn kneser_ney_probs_exists() {
+    let mut sa = sais("aaaaaaaabc");
+    let query = vec![utf16!("b")[0]];
+    let vocab = utf16!("c")[0] + 1;
+    let a = utf16!("a")[0] as usize;
+    let c = utf16!("c")[0] as usize;
+    
+    sa.compute_kn_unigram_probs();
+    let sa = sa;
+    // let mut kn_unigram_prob = vec![1e-5; vocab as usize];
+    // kn_unigram_prob[a] = 0.9;
+    // kn_unigram_prob[c] = 0.1;
+
+    let smoothed_probs = sa.kneser_ney_probs(&query, Some(vocab));
+    let bigram_counts = sa.count_next(&query, Some(vocab));
+    let unsmoothed_probs = bigram_counts
+        .iter()
+        .map(|&x| x as f64 / bigram_counts.iter().sum::<usize>() as f64)
+        .collect::<Vec<f64>>();
+    
+    // The naive bigram probability for query 'b' is p(c) = 1.0.
+    assert!(unsmoothed_probs[a] == 0.0);
+    assert!(unsmoothed_probs[c] == 1.0);
+    
+    // The smoothed bigram probabilities interpolate with the lower-order unigram
+    // probabilities where p(a) is high, lowering p(c)
+    assert!(smoothed_probs[a] > 0.1);
+    assert!(smoothed_probs[c] < 1.0);
 }
