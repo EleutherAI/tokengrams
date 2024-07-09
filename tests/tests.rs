@@ -206,7 +206,7 @@ fn prop_sample() {
 #[test]
 fn kneser_ney_sample() {
     let mut sa = sais("aabbccabccba");
-    sa.compute_kn_unigram_probs();
+    sa.compute_kn_unigram_probs(Some(100));
     let a = utf16!("a");
 
     let tokens = sa.kneser_ney_sample(a, 3, 10, None).unwrap();
@@ -217,7 +217,7 @@ fn kneser_ney_sample() {
 fn kneser_key_probs_empty_query_exists() {
     let mut sa = sais("aaa");
     // sa.kn_cache = Some(vec![1.0 / vocab as f64; vocab as usize]);
-    sa.compute_kn_unigram_probs();
+    sa.compute_kn_unigram_probs(Some(100));
     let vocab = utf16!("a")[0] + 1;
     let probs = sa.kneser_ney_probs(&[], Some(vocab));
     
@@ -233,7 +233,7 @@ fn kneser_ney_probs_exists() {
     let a = utf16!("a")[0] as usize;
     let c = utf16!("c")[0] as usize;
     
-    sa.compute_kn_unigram_probs();
+    sa.compute_kn_unigram_probs(Some(100));
     let sa = sa;
     // let mut kn_unigram_prob = vec![1e-5; vocab as usize];
     // kn_unigram_prob[a] = 0.9;

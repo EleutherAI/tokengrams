@@ -134,7 +134,7 @@ where
     /// Positions are byte indices into `text`.
     ///
     /// If you just need to test existence, then use `contains` since it is
-    /// faster.
+    /// faster. 
     ///
     /// # Example
     ///
@@ -368,16 +368,20 @@ where
 
     /// Determine the kneser-ney unigram probabilities of each token, defined as the number of unique bigrams
     /// in text that end with a token divided by the number of unique bigrams.
-    pub fn compute_kn_unigram_probs(&mut self) {
+    pub fn compute_kn_unigram_probs(&mut self, vocab: Option<u16>) {
         if let Some(_) = &self.kn_cache {
             return
         }
 
         let eps = 1e-9;
-        let vocab = u16::MAX as usize + 1;
+        let max_vocab = u16::MAX as usize + 1;
+        let vocab = match vocab {
+            Some(size) => size as usize,
+            None => max_vocab,
+        };
 
-        let counts = if self.text.len() < 1000 { 
-            let mut counts = vec![0usize; vocab * vocab];
+        let counts = if self.text.len() < 1000 {
+            let mut counts = vec![0usize; max_vocab * max_vocab];
             self.text
                 .windows(2)
                 .map(|w| (u32::from(w[0]) << 16) | u32::from(w[1]))
@@ -385,8 +389,9 @@ where
                     counts[bigram as usize] += 1;
                 });
             counts
+
         } else {
-            let counts: Vec<AtomicU32> = (0..vocab * vocab).map(|_| AtomicU32::new(0)).collect();
+            let counts: Vec<AtomicU32> = (0..max_vocab * max_vocab).map(|_| AtomicU32::new(0)).collect();
             self.text.par_windows(2).for_each(|w| {
                 let bigram = (u32::from(w[0]) << 16) | u32::from(w[1]);
                 counts[bigram as usize].fetch_add(1, Ordering::Relaxed);
@@ -394,9 +399,13 @@ where
             counts.iter().map(|count| count.load(Ordering::Relaxed) as usize).collect()
         };
 
-        let unique_bigram_count = counts.iter().filter(|&&count| count != 0).count() as f64;
+        let vocab_counts: Vec<usize> = (0..vocab).flat_map(|i| {
+            let start = i * max_vocab;
+            counts[start..start + vocab].iter().cloned()
+        }).collect();
+        let unique_bigram_count = vocab_counts.iter().filter(|&&count| count != 0).count() as f64;
         
-        let unigram_probs: Vec<f64> = counts.chunks(vocab).map(|bigram_counts| {
+        let unigram_probs: Vec<f64> = vocab_counts.chunks(vocab).map(|bigram_counts| {
             let suffix_count = bigram_counts.iter().filter(|&&count| count > 0).count() as f64;
             (suffix_count + eps) / (unique_bigram_count + eps * vocab as f64)
         }).collect();
@@ -543,7 +552,7 @@ mod tests {
     #[test]
     fn kn_unigram_probs_exists() {
         let mut sa = sais("aaab");
-        sa.compute_kn_unigram_probs();
+        sa.compute_kn_unigram_probs(Some(100));
         let sa = sa;
 
         let kn_unigram_prob = sa.get_cached_kn_unigram_probs();
