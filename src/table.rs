@@ -286,7 +286,9 @@ where
             .collect()
     }
 
-
+    /// Compute Kneser-Ney smoothed token probability distribution given a query.
+    /// From "On structuring probabilistic dependences in stochastic language modelling", page 25,
+    /// doi:10.1006/csla.1994.1001
     pub fn kn_probs(
         &self,
         query: &[u16],
@@ -325,7 +327,7 @@ where
             .collect()
     }
 
-    /// Autoregressively sample num_samples of k characters from a kneser-ney smoothed n-gram model
+    /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model
     pub fn kn_batch_sample(
         &self,
         query: &[u16],
@@ -340,7 +342,7 @@ where
             .collect()
     }
 
-    /// Autoregressively sample k characters from a kneser-ney smoothed n-gram model
+    /// Autoregressively sample k characters from a Kneser-Ney smoothed n-gram model
     pub fn kn_sample(
         &self,
         query: &[u16],
@@ -408,6 +410,9 @@ where
         count_map
     }
 
+    /// Compute delta using the estimate in https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16.
+    /// Based on derivations in "On structuring probabilistic dependences in stochastic language modelling"
+    /// page 12, doi:10.1006/csla.1994.1001
     fn get_delta(&self, n: usize) -> f64 {
         let count_map = self.compute_ngram_counts(n);
         let n1 = *count_map.get(&1).unwrap_or(&0) as f64;
@@ -415,21 +420,18 @@ where
 
         // n1 and n2 are greater than 0 for non-trivial datasets
         if n1 == 0. || n2 == 0. {
-            0.75
+            1.
         } else {
-            n1 / (n1 + 2. * n2)
+            n1 / (n1 + n2.mul(2.))
         }
     }
 
-    /// Determine the kneser-ney unigram probabilities of each token, defined as the number of unique bigrams
+    /// Determine Kneser-Ney unigram probabilities of each token, defined as the number of unique bigrams
     /// in text that end with a token divided by the number of unique bigrams.
     pub fn compute_kn_unigram_probs(&mut self, vocab: Option<u16>) {
         if let Some(_) = &self.kn_cache {
             return
         }
-
-        // let count_map = self.compute_ngram_counts(2);
-        // let unique_bigram_count = count_map.values().sum::<usize>();
 
         let eps = 1e-9;
         let max_vocab = u16::MAX as usize + 1;
@@ -439,7 +441,7 @@ where
         };
 
         let counts = if self.text.len() < 1000 {
-            let mut counts = vec![0usize; max_vocab * max_vocab];
+            let mut counts = vec![0usize; max_vocab.mul(max_vocab)];
             self.text
                 .windows(2)
                 .map(|w| (u32::from(w[0]) << 16) | u32::from(w[1]))
@@ -449,7 +451,7 @@ where
             counts
 
         } else {
-            let counts: Vec<AtomicU32> = (0..max_vocab * max_vocab).map(|_| AtomicU32::new(0)).collect();
+            let counts: Vec<AtomicU32> = (0..max_vocab.mul(max_vocab)).map(|_| AtomicU32::new(0)).collect();
             self.text.par_windows(2).for_each(|w| {
                 let bigram = (u32::from(w[0]) << 16) | u32::from(w[1]);
                 counts[bigram as usize].fetch_add(1, Ordering::Relaxed);
@@ -458,12 +460,12 @@ where
         };
         
         let suffix_counts: Vec<usize> = (0..vocab).map(|i| {
-            (0..vocab).fold(0, |acc, j| acc + counts[j * max_vocab + i].min(1))
+            (0..vocab).fold(0, |acc, j| acc + counts[j.mul(max_vocab) + i].min(1))
         }).collect();
 
         let unique_bigram_count = suffix_counts.iter().sum::<usize>() as f64;
         let unigram_probs: Vec<f64> = suffix_counts.iter().map(|&count| {
-            (count as f64 + eps) / (unique_bigram_count + eps * vocab as f64)
+            (count as f64 + eps) / (unique_bigram_count + eps.mul(vocab as f64))
         }).collect();
 
         self.kn_cache = Some(unigram_probs);
@@ -472,6 +474,7 @@ where
     fn get_cached_kn_unigram_probs(&self) -> &Vec<f64> {
         self.kn_cache.as_ref().unwrap()
     }
+    
     /// Autoregressively sample k characters from a conditional distribution based
     /// on the previous (n - 1) characters (n-gram prefix) in the sequence.
     pub fn sample(&self, query: &[u16], n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>> {
