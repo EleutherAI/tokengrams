@@ -367,46 +367,52 @@ where
         Ok(sequence)
     }
 
-    // Map of frequency to number of unique n-grams that occur with that frequency
-    fn compute_ngram_counts(&self, n: usize) -> HashMap<usize, usize> {
-        let mut count_map: HashMap<usize, usize> = HashMap::new();
-        
-        let query = vec![0; 0];
-        let (range_start, range_end) = self.boundaries(&query);
-        let mut stack = vec![(range_start, range_end, 1, query)];
-        'outer: while let Some((search_start, search_end, level_n, query)) = stack.pop() {
-            if search_start == search_end {
-                continue;
-            }
+    fn recurse_count_ngrams(
+        &self,
+        search_start: usize, 
+        search_end: usize, 
+        n: usize, 
+        query: &[u16], 
+        target_n: usize, 
+        count_map: &mut HashMap<usize, usize>
+    ) {
+        if search_start == search_end {
+            return;
+        }
 
-            // Find median index of suffixes starting with `query` and ending with at least one additional token
-            let mut idx = search_start + (search_end - search_start) / 2;
-            while self.suffix(idx).eq(&query) {
-                idx = idx + (search_end - idx) / 2 + 1;
-                if idx >= search_end {
-                    continue 'outer;
-                }
-            }
-            
-            let token = self.suffix(idx)[query.len()];
-            let mut query_vec = query.clone();
-            query_vec.push(token);
-
-            let (start, end) = self.range_boundaries(&query_vec, search_start, search_end);
-            if level_n < n {
-                stack.push((start, end, level_n + 1, query_vec));
-            } else {
-                *count_map.entry(end - start).or_insert(0) += 1;
-            }
-
-            // Count other completions
-            if search_start < start {
-                stack.push((search_start, start, level_n, query.clone()));
-            }
-            if end < search_end {
-                stack.push((end, search_end, level_n, query));
+        // Find median of indices that ending in at least one additional token
+        let mut idx = search_start + (search_end - search_start) / 2;
+        while self.suffix(idx).eq(query) {
+            idx += (search_end - idx) / 2 + 1;
+            if idx >= search_end {
+                return;
             }
         }
+
+        let token = self.suffix(idx)[query.len()];
+        let query_vec = [query, &[token]].concat();
+
+        let (start, end) = self.range_boundaries(&query_vec, search_start, search_end);
+        if n < target_n {
+            self.recurse_count_ngrams(start, end, n + 1, &query_vec, target_n, count_map);
+        } else {
+            *count_map.entry(end - start).or_insert(0) += 1;
+        }
+
+        if search_start < start {
+            self.recurse_count_ngrams(search_start, start, n, query, target_n, count_map);
+        }
+        if end < search_end {
+            self.recurse_count_ngrams(end, search_end, n, query, target_n, count_map);
+        }
+    }
+
+    /// Map of frequency to number of unique n-grams that occur with that frequency
+    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
+        let mut count_map: HashMap<usize, usize> = HashMap::new();
+        let query = vec![0; 0];
+        let (range_start, range_end) = self.boundaries(&query);
+        self.recurse_count_ngrams(range_start, range_end, 1, &query, n, &mut count_map);
         count_map
     }
 
@@ -414,7 +420,7 @@ where
     /// Based on derivations in "On structuring probabilistic dependences in stochastic language modelling"
     /// page 12, doi:10.1006/csla.1994.1001
     fn get_delta(&self, n: usize) -> f64 {
-        let count_map = self.compute_ngram_counts(n);
+        let count_map = self.count_ngrams(n);
         let n1 = *count_map.get(&1).unwrap_or(&0) as f64;
         let n2 = *count_map.get(&2).unwrap_or(&0) as f64;
 
@@ -625,7 +631,7 @@ mod tests {
     #[test]
     fn compute_ngram_counts_exists() {
         let sa = sais("aaabbbaaa");
-        let count_map = sa.compute_ngram_counts(3);
+        let count_map = sa.count_ngrams(3);
 
         // Every 3-gram except aaa occurs once
         let mut expected_map = std::collections::HashMap::new();
