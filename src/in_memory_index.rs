@@ -88,11 +88,11 @@ impl InMemoryIndex {
         query: Vec<u16>,
         n: usize,
         k: usize,
-        n_samples: usize,
+        num_samples: usize,
         vocab: Option<u16>
     ) -> Result<Vec<Vec<u16>>, PyErr> {
         self.table
-            .batch_sample(&query, n, k, n_samples, vocab)
+            .batch_sample(&query, n, k, num_samples, vocab)
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
@@ -101,11 +101,11 @@ impl InMemoryIndex {
         query: Vec<u16>,
         n: usize,
         k: usize,
-        n_samples: usize,
+        num_samples: usize,
         vocab: Option<u16>
     ) -> Result<Vec<Vec<u16>>, PyErr> {
         self.table
-            .kn_batch_sample(&query, n, k, n_samples, vocab)
+            .kn_batch_sample(&query, n, k, num_samples, vocab)
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 

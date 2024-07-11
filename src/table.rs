@@ -237,7 +237,7 @@ where
     /// Count how often each token succeeds `query`.
     pub fn count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         let vocab_size: usize = match vocab {
-            Some(size) => size.into(),
+            Some(size) => size as usize,
             None => u16::MAX as usize + 1,
         };
         let mut counts: Vec<usize> = vec![0; vocab_size];
@@ -325,16 +325,16 @@ where
             .collect()
     }
 
-    /// Autoregressively sample n_samples of k characters from a kneser-ney smoothed n-gram model
+    /// Autoregressively sample num_samples of k characters from a kneser-ney smoothed n-gram model
     pub fn kn_batch_sample(
         &self,
         query: &[u16],
         n: usize,
         k: usize,
-        n_samples: usize,
+        num_samples: usize,
         vocab: Option<u16>
     ) -> Result<Vec<Vec<u16>>> {
-        (0..n_samples)
+        (0..num_samples)
             .into_par_iter()
             .map(|_| self.kn_sample(query, n, k, vocab))
             .collect()
@@ -428,6 +428,9 @@ where
             return
         }
 
+        // let count_map = self.compute_ngram_counts(2);
+        // let unique_bigram_count = count_map.values().sum::<usize>();
+
         let eps = 1e-9;
         let max_vocab = u16::MAX as usize + 1;
         let vocab = match vocab {
@@ -453,16 +456,14 @@ where
             });
             counts.iter().map(|count| count.load(Ordering::Relaxed) as usize).collect()
         };
-
-        let vocab_counts: Vec<usize> = (0..vocab).flat_map(|i| {
-            let start = i * max_vocab;
-            counts[start..start + vocab].iter().cloned()
-        }).collect();
-        let unique_bigram_count = vocab_counts.iter().filter(|&&count| count != 0).count() as f64;
         
-        let unigram_probs: Vec<f64> = vocab_counts.chunks(vocab).map(|bigram_counts| {
-            let suffix_count = bigram_counts.iter().filter(|&&count| count > 0).count() as f64;
-            (suffix_count + eps) / (unique_bigram_count + eps * vocab as f64)
+        let suffix_counts: Vec<usize> = (0..vocab).map(|i| {
+            (0..vocab).fold(0, |acc, j| acc + counts[j * max_vocab + i].min(1))
+        }).collect();
+
+        let unique_bigram_count = suffix_counts.iter().sum::<usize>() as f64;
+        let unigram_probs: Vec<f64> = suffix_counts.iter().map(|&count| {
+            (count as f64 + eps) / (unique_bigram_count + eps * vocab as f64)
         }).collect();
 
         self.kn_cache = Some(unigram_probs);
@@ -492,17 +493,17 @@ where
         Ok(sequence)
     }
 
-    /// Autoregressively samples n_samples of k characters each from conditional distributions based
+    /// Autoregressively samples num_samples of k characters each from conditional distributions based
     /// on the previous (n - 1) characters (n-gram prefix) in the sequence."""
     pub fn batch_sample(
         &self,
         query: &[u16],
         n: usize,
         k: usize,
-        n_samples: usize,
+        num_samples: usize,
         vocab: Option<u16>
     ) -> Result<Vec<Vec<u16>>> {
-        (0..n_samples)
+        (0..num_samples)
             .into_par_iter()
             .map(|_| self.sample(query, n, k, vocab))
             .collect()
