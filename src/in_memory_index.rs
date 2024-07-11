@@ -77,9 +77,9 @@ impl InMemoryIndex {
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    pub fn kneser_ney_sample(&self, query: Vec<u16>, n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>, PyErr> {
+    pub fn kn_sample(&self, query: Vec<u16>, n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>, PyErr> {
         self.table
-            .kneser_ney_sample(&query, n, k, vocab)
+            .kn_sample(&query, n, k, vocab)
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
@@ -96,7 +96,7 @@ impl InMemoryIndex {
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    pub fn kneser_ney_batch_sample(
+    pub fn kn_batch_sample(
         &self,
         query: Vec<u16>,
         n: usize,
@@ -105,12 +105,12 @@ impl InMemoryIndex {
         vocab: Option<u16>
     ) -> Result<Vec<Vec<u16>>, PyErr> {
         self.table
-            .kneser_ney_batch_sample(&query, n, k, n_samples, vocab)
+            .kn_batch_sample(&query, n, k, n_samples, vocab)
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    pub fn kneser_ney_probs(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
-        self.table.kneser_ney_probs(&query, vocab)
+    pub fn kn_probs(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
+        self.table.kn_probs(&query, vocab)
     }
 
     pub fn is_sorted(&self) -> bool {

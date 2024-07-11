@@ -8,10 +8,11 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::{fmt, ops::Deref, ops::Div, ops::Mul, u64};
+use std::collections::HashMap;
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 /// The table supports n-gram statistics computation and language modeling over text corpora.
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
     text: T,
     table: U,
@@ -245,7 +246,7 @@ where
         let (range_start, range_end) = self.boundaries(query);
         let mut stack = vec![(range_start, range_end)];
 
-        while let Some((search_start, search_end)) = stack.pop() {
+        'outer: while let Some((search_start, search_end)) = stack.pop() {
             if search_start == search_end {
                 continue;
             }
@@ -254,17 +255,17 @@ where
             let mut idx = search_start + (search_end - search_start) / 2;
             while self.suffix(idx).eq(query) {
                 idx = idx + (search_end - idx) / 2 + 1;
-            }
-            if idx >= search_end {
-                continue;
+                if idx >= search_end {
+                    continue 'outer;
+                }
             }
 
             // Count query completion
             let token = self.suffix(idx)[query.len()];
             query_vec.push(token);
             let (start, end) = self.range_boundaries(&query_vec, search_start, search_end);
-            counts[token as usize] = end - start;
             query_vec.pop();
+            counts[token as usize] = end - start;
 
             // Count other completions
             if search_start < start {
@@ -285,21 +286,19 @@ where
             .collect()
     }
 
-    pub fn kneser_ney_probs(
+
+    pub fn kn_probs(
         &self,
         query: &[u16],
         vocab: Option<u16>,
     ) -> Vec<f64> {
-        // TODO Use leave-one-out cross-validation to estimate for each n
-        let delta = 0.75;
+        let delta = self.get_delta(query.len() + 1);
         let kn_unigram_probs = self.get_cached_kn_unigram_probs();
         let p_continuations = if query.is_empty() {
             kn_unigram_probs.to_vec()
         } else {
-            self.kneser_ney_probs(&query[1..], vocab)
+            self.kn_probs(&query[1..], vocab)
         };
-        let residual = (p_continuations.iter().sum::<f64>() - 1.0).abs();
-        assert!(residual < 1e-3, "p_continuations: {:?}", p_continuations);
         
         let counts = self.count_next(query, vocab);
         let suffix_count = counts.iter().sum::<usize>() as f64;
@@ -326,8 +325,8 @@ where
             .collect()
     }
 
-    /// Autoregressively sample k characters from a smoothed n-gram model
-    pub fn kneser_ney_batch_sample(
+    /// Autoregressively sample n_samples of k characters from a kneser-ney smoothed n-gram model
+    pub fn kn_batch_sample(
         &self,
         query: &[u16],
         n: usize,
@@ -337,12 +336,12 @@ where
     ) -> Result<Vec<Vec<u16>>> {
         (0..n_samples)
             .into_par_iter()
-            .map(|_| self.kneser_ney_sample(query, n, k, vocab))
+            .map(|_| self.kn_sample(query, n, k, vocab))
             .collect()
     }
 
-    /// Autoregressively sample k characters from a smoothed n-gram model
-    pub fn kneser_ney_sample(
+    /// Autoregressively sample k characters from a kneser-ney smoothed n-gram model
+    pub fn kn_sample(
         &self,
         query: &[u16],
         n: usize,
@@ -355,7 +354,7 @@ where
         for _ in 0..k {
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
-            let probs = self.kneser_ney_probs(prev, vocab);
+            let probs = self.kn_probs(prev, vocab);
 
             let dist = WeightedIndex::new(&probs)?;
             let sampled_index = dist.sample(&mut rng);
@@ -364,6 +363,62 @@ where
         }
 
         Ok(sequence)
+    }
+
+    // Map of frequency to number of unique n-grams that occur with that frequency
+    fn compute_ngram_counts(&self, n: usize) -> HashMap<usize, usize> {
+        let mut count_map: HashMap<usize, usize> = HashMap::new();
+        
+        let query = vec![0; 0];
+        let (range_start, range_end) = self.boundaries(&query);
+        let mut stack = vec![(range_start, range_end, 1, query)];
+        'outer: while let Some((search_start, search_end, level_n, query)) = stack.pop() {
+            if search_start == search_end {
+                continue;
+            }
+
+            // Find median index of suffixes starting with `query` and ending with at least one additional token
+            let mut idx = search_start + (search_end - search_start) / 2;
+            while self.suffix(idx).eq(&query) {
+                idx = idx + (search_end - idx) / 2 + 1;
+                if idx >= search_end {
+                    continue 'outer;
+                }
+            }
+            
+            let token = self.suffix(idx)[query.len()];
+            let mut query_vec = query.clone();
+            query_vec.push(token);
+
+            let (start, end) = self.range_boundaries(&query_vec, search_start, search_end);
+            if level_n < n {
+                stack.push((start, end, level_n + 1, query_vec));
+            } else {
+                *count_map.entry(end - start).or_insert(0) += 1;
+            }
+
+            // Count other completions
+            if search_start < start {
+                stack.push((search_start, start, level_n, query.clone()));
+            }
+            if end < search_end {
+                stack.push((end, search_end, level_n, query));
+            }
+        }
+        count_map
+    }
+
+    fn get_delta(&self, n: usize) -> f64 {
+        let count_map = self.compute_ngram_counts(n);
+        let n1 = *count_map.get(&1).unwrap_or(&0) as f64;
+        let n2 = *count_map.get(&2).unwrap_or(&0) as f64;
+
+        // n1 and n2 are greater than 0 for non-trivial datasets
+        if n1 == 0. || n2 == 0. {
+            0.75
+        } else {
+            n1 / (n1 + 2. * n2)
+        }
     }
 
     /// Determine the kneser-ney unigram probabilities of each token, defined as the number of unique bigrams
@@ -561,5 +616,18 @@ mod tests {
 
         // Additive smoothing results in non-zero probability on unused vocabulary
         assert!(kn_unigram_prob[0] > 0.0);
+    }
+
+    #[test]
+    fn compute_ngram_counts_exists() {
+        let sa = sais("aaabbbaaa");
+        let count_map = sa.compute_ngram_counts(3);
+
+        // Every 3-gram except aaa occurs once
+        let mut expected_map = std::collections::HashMap::new();
+        expected_map.insert(1, 5);
+        expected_map.insert(2, 1);
+
+        assert_eq!(count_map, expected_map);
     }
 }

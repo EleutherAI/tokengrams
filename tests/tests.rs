@@ -204,29 +204,28 @@ fn prop_sample() {
 }
 
 #[test]
-fn kneser_ney_sample() {
+fn kn_sample() {
     let mut sa = sais("aabbccabccba");
     sa.compute_kn_unigram_probs(Some(100));
     let a = utf16!("a");
 
-    let tokens = sa.kneser_ney_sample(a, 3, 10, None).unwrap();
+    let tokens = sa.kn_sample(a, 3, 10, None).unwrap();
     assert_eq!(tokens.len(), 11);
 }
 
 #[test]
-fn kneser_key_probs_empty_query_exists() {
+fn kn_probs_empty_query_exists() {
     let mut sa = sais("aaa");
-    // sa.kn_cache = Some(vec![1.0 / vocab as f64; vocab as usize]);
     sa.compute_kn_unigram_probs(Some(100));
     let vocab = utf16!("a")[0] + 1;
-    let probs = sa.kneser_ney_probs(&[], Some(vocab));
+    let probs = sa.kn_probs(&[], Some(vocab));
     
     let residual = (probs.iter().sum::<f64>() - 1.0).abs();
     assert!(residual < 1e-4);
 }
 
 #[test]
-fn kneser_ney_probs_exists() {
+fn kn_probs_exists() {
     let mut sa = sais("aaaaaaaabc");
     let query = vec![utf16!("b")[0]];
     let vocab = utf16!("c")[0] + 1;
@@ -235,11 +234,8 @@ fn kneser_ney_probs_exists() {
     
     sa.compute_kn_unigram_probs(Some(100));
     let sa = sa;
-    // let mut kn_unigram_prob = vec![1e-5; vocab as usize];
-    // kn_unigram_prob[a] = 0.9;
-    // kn_unigram_prob[c] = 0.1;
 
-    let smoothed_probs = sa.kneser_ney_probs(&query, Some(vocab));
+    let smoothed_probs = sa.kn_probs(&query, Some(vocab));
     let bigram_counts = sa.count_next(&query, Some(vocab));
     let unsmoothed_probs = bigram_counts
         .iter()
