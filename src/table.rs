@@ -6,7 +6,6 @@ use rand::distributions::{Distribution, WeightedIndex};
 use rand::thread_rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::{fmt, ops::Deref, ops::Div, ops::Mul, u64};
 use std::collections::HashMap;
 
@@ -234,7 +233,39 @@ where
         }
     }
 
-    /// Count how often each token succeeds `query`.
+    fn recurse_count_next(
+        &self,
+        counts: &mut Vec<usize>, 
+        query_vec: &mut Vec<u16>, 
+        search_start: usize, 
+        search_end: usize
+    ) {
+        if search_start == search_end {
+            return;
+        }
+
+        let mut idx = search_start + (search_end - search_start) / 2;
+        while self.suffix(idx).eq(query_vec.as_slice()) {
+            idx = idx + (search_end - idx) / 2 + 1;
+            if idx >= search_end {
+                return;
+            }
+        }
+
+        let token = self.suffix(idx)[query_vec.len()];
+        query_vec.push(token);
+        let (start, end) = self.range_boundaries(&query_vec, search_start, search_end);
+        query_vec.pop();
+        counts[token as usize] = end - start;
+
+        if search_start < start {
+            self.recurse_count_next(counts, query_vec, search_start, start);
+        }
+        if end < search_end {
+            self.recurse_count_next(counts, query_vec, end, search_end);
+        }
+    }
+
     pub fn count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         let vocab_size: usize = match vocab {
             Some(size) => size as usize,
@@ -242,39 +273,9 @@ where
         };
         let mut counts: Vec<usize> = vec![0; vocab_size];
         let mut query_vec = query.to_vec();
-
+    
         let (range_start, range_end) = self.boundaries(query);
-        let mut stack = vec![(range_start, range_end)];
-
-        'outer: while let Some((search_start, search_end)) = stack.pop() {
-            if search_start == search_end {
-                continue;
-            }
-
-            // Find median index of suffixes starting with `query` and ending with at least one additional token
-            let mut idx = search_start + (search_end - search_start) / 2;
-            while self.suffix(idx).eq(query) {
-                idx = idx + (search_end - idx) / 2 + 1;
-                if idx >= search_end {
-                    continue 'outer;
-                }
-            }
-
-            // Count query completion
-            let token = self.suffix(idx)[query.len()];
-            query_vec.push(token);
-            let (start, end) = self.range_boundaries(&query_vec, search_start, search_end);
-            query_vec.pop();
-            counts[token as usize] = end - start;
-
-            // Count other completions
-            if search_start < start {
-                stack.push((search_start, start));
-            }
-            if end < search_end {
-                stack.push((end, search_end));
-            }
-        }
+        self.recurse_count_next(&mut counts, &mut query_vec, range_start, range_end);
         counts
     }
 
@@ -446,27 +447,16 @@ where
             None => max_vocab,
         };
 
-        let counts = if self.text.len() < 1000 {
-            let mut counts = vec![0usize; max_vocab.mul(max_vocab)];
-            self.text
-                .windows(2)
-                .map(|w| (u32::from(w[0]) << 16) | u32::from(w[1]))
-                .for_each(|bigram| {
-                    counts[bigram as usize] += 1;
-                });
-            counts
-
-        } else {
-            let counts: Vec<AtomicU32> = (0..max_vocab.mul(max_vocab)).map(|_| AtomicU32::new(0)).collect();
-            self.text.par_windows(2).for_each(|w| {
-                let bigram = (u32::from(w[0]) << 16) | u32::from(w[1]);
-                counts[bigram as usize].fetch_add(1, Ordering::Relaxed);
+        let mut counts = vec![0usize; max_vocab.mul(max_vocab)];
+        self.text
+            .windows(2)
+            .map(|w| (u32::from(w[0]) << 16) | u32::from(w[1]))
+            .for_each(|bigram| {
+                counts[bigram as usize] |= 1;
             });
-            counts.iter().map(|count| count.load(Ordering::Relaxed) as usize).collect()
-        };
         
         let suffix_counts: Vec<usize> = (0..vocab).map(|i| {
-            (0..vocab).fold(0, |acc, j| acc + counts[j.mul(max_vocab) + i].min(1))
+            (0..vocab).fold(0, |acc, j| acc + counts[j.mul(max_vocab) + i])
         }).collect();
 
         let unique_bigram_count = suffix_counts.iter().sum::<usize>() as f64;
