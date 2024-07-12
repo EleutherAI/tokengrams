@@ -28,8 +28,8 @@ class InMemoryIndex:
         on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
         (n - 1) characters all available characters are used.""" 
     
-    def batch_sample(self, query: list[int], n: int, k: int, n_samples: int) -> list[list[int]]:
-        """Autoregressively sample n_samples of k characters each from conditional distributions based 
+    def batch_sample(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
+        """Autoregressively sample num_samples of k characters each from conditional distributions based 
         on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
         (n - 1) characters all available characters are used.""" 
 
@@ -67,8 +67,8 @@ class MemmapIndex:
         on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
         (n - 1) characters all available characters are used.""" 
    
-    def batch_sample(self, query: list[int], n: int, k: int, n_samples: int) -> list[list[int]]:
-        """Autoregressively samples n_samples of k characters each from conditional distributions based 
+    def batch_sample(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
+        """Autoregressively samples num_samples of k characters each from conditional distributions based 
         on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
         (n - 1) characters all available characters are used."""
    

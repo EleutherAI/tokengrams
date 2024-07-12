@@ -171,7 +171,6 @@ fn sample_unsmoothed_empty_query_exists() {
 #[test]
 fn sample_smoothed_exists() {
     let mut sa = sais("aabbccabccba");
-    sa.compute_kn_unigram_probs(Some(100));
     let a = utf16!("a");
 
     let tokens = &sa.sample_smoothed(a, 3, 10, 1, None).unwrap()[0];

@@ -15,7 +15,7 @@ use std::collections::HashMap;
 pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
     text: T,
     table: U,
-    kn_cache: KneserNeyCache
+    cache: KneserNeyCache
 }
 
 impl<T: PartialEq, U: PartialEq> PartialEq for SuffixTable<T, U> {
@@ -55,7 +55,7 @@ impl SuffixTable<Box<[u16]>, Box<[u64]>> {
         SuffixTable {
             text,
             table: table.into(),
-            kn_cache: KneserNeyCache { unigram_probs: None, n_delta: HashMap::new() },
+            cache: KneserNeyCache { unigram_probs: None, n_delta: HashMap::new() },
         }
     }
 }
@@ -69,7 +69,7 @@ where
         SuffixTable { 
             text, 
             table, 
-            kn_cache: KneserNeyCache { unigram_probs: None, n_delta: HashMap::new() }, 
+            cache: KneserNeyCache { unigram_probs: None, n_delta: HashMap::new() }, 
         }
     }
 
@@ -167,7 +167,7 @@ where
             || (query < self.suffix(0) && !self.suffix(0).starts_with(query))
             || query > self.suffix(self.len() - 1)
         {
-            return &[]
+            return &[];
         }
 
         // The below is pretty close to the algorithm on Wikipedia:
@@ -195,12 +195,12 @@ where
     /// Determine start and end `table` indices of items that start with `query`.
     fn boundaries(&self, query: &[u16]) -> (usize, usize) {
         if self.text.is_empty() || query.is_empty() {
-            return (0, self.table.len())
+            return (0, self.table.len());
         }
         if (query < self.suffix(0) && !self.suffix(0).starts_with(query))
             || query > self.suffix(self.len() - 1)
         {
-            return (0, 0)
+            return (0, 0);
         }
 
         let start = binary_search(&self.table, |&sufi| query <= &self.text[sufi as usize..]);
@@ -225,7 +225,7 @@ where
             || (query < self.suffix(range_start) && !self.suffix(range_start).starts_with(query))
             || query > self.suffix(std::cmp::max(0, range_end - 1))
         {
-            return (0, 0)
+            return (0, 0);
         }
 
         let start = binary_search(&self.table[range_start..range_end], |&sufi| {
@@ -351,7 +351,7 @@ where
         let counts = self.count_next(query, vocab);
         let suffix_count = counts.iter().sum::<usize>() as f64;
         if suffix_count == 0.0 {
-            return p_continuations
+            return p_continuations;
         }
         let unique_suffix_count = count_gt_zero(&counts) as f64;
         let uncommon_suffix_count = count_eq_one(&counts) as f64;
@@ -482,11 +482,11 @@ where
         } else {
             n1 / (n1 + n2.mul(2.))
         };
-        self.kn_cache.n_delta.insert(n, delta);
+        self.cache.n_delta.insert(n, delta);
     }
 
     fn get_cached_delta(&self, n: usize) -> f64 {
-        *self.kn_cache.n_delta.get(&n).unwrap()
+        *self.cache.n_delta.get(&n).unwrap()
     }
 
     fn recurse_kn_unigram_probs(&self, search_start: usize, search_end: usize, n: usize, unique_prefix_counts: &mut Vec<usize>) {
@@ -524,11 +524,10 @@ where
 
     /// Determine Kneser-Ney unigram probabilities of each token, defined as the number of unique bigrams
     /// in text that end with a token divided by the number of unique bigrams.
-    pub fn compute_kn_unigram_probs(&mut self, vocab: Option<u16>) {
-        if let Some(_) = &self.kn_cache.unigram_probs {
-            return
+    fn compute_kn_unigram_probs(&mut self, vocab: Option<u16>) {
+        if let Some(_) = &self.cache.unigram_probs {
+            return;
         }
-        let instant = std::time::Instant::now();
 
         let eps = 1e-9;
         let max_vocab = u16::MAX as usize + 1;
@@ -545,15 +544,11 @@ where
             (count as f64 + eps) / (counts.iter().sum::<usize>() as f64 + eps.mul(vocab as f64))
         }).collect();
 
-        self.kn_cache.unigram_probs = Some(unigram_probs);
-
-        println!("Time elapsed for unigram probs: {:?}", instant.elapsed());
-
-        // self.kn_cache.unigram_probs = Some(unigram_probs);
+        self.cache.unigram_probs = Some(unigram_probs);
     }
 
     fn get_cached_kn_unigram_probs(&self) -> &Vec<f64> {
-        self.kn_cache.unigram_probs.as_ref().unwrap()
+        self.cache.unigram_probs.as_ref().unwrap()
     }
     
     /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
