@@ -334,6 +334,12 @@ where
             .collect()
     }
 
+    pub fn get_smoothed_probs(&mut self, query: &[u16], vocab: Option<u16>) -> Vec<f64> {
+        self.compute_deltas(query.len() + 1);
+        self.compute_kn_unigram_probs(vocab);
+        self.smoothed_probs(query, vocab)
+    }
+
     /// Compute Kneser-Ney smoothed token probability distribution given a query.
     /// From "On structuring probabilistic dependences in stochastic language modelling", page 25,
     /// doi:10.1006/csla.1994.1001
@@ -382,9 +388,7 @@ where
         num_samples: usize,
         vocab: Option<u16>
     ) -> Result<Vec<Vec<u16>>> {
-        for i in 1..n + 1 {
-            self.compute_delta(i);
-        }
+        self.compute_deltas(n);
         self.compute_kn_unigram_probs(vocab);
 
         (0..num_samples)
@@ -471,18 +475,25 @@ where
     /// Compute delta using the estimate in https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16.
     /// Based on derivations in "On structuring probabilistic dependences in stochastic language modelling"
     /// page 12, doi:10.1006/csla.1994.1001
-    fn compute_delta(&mut self, n: usize) {
-        let count_map = self.count_ngrams(n);
-        let n1 = *count_map.get(&1).unwrap_or(&0) as f64;
-        let n2 = *count_map.get(&2).unwrap_or(&0) as f64;
+    fn compute_deltas(&mut self, n: usize) {
+        for i in 1..n + 1 {
+            if self.cache.n_delta.contains_key(&i) {
+                continue;
+            }
 
-        // n1 and n2 are greater than 0 for non-trivial datasets
-        let delta = if n1 == 0. || n2 == 0. {
-            1.
-        } else {
-            n1 / (n1 + n2.mul(2.))
-        };
-        self.cache.n_delta.insert(n, delta);
+            let count_map = self.count_ngrams(n);
+            let n1 = *count_map.get(&1).unwrap_or(&0) as f64;
+            let n2 = *count_map.get(&2).unwrap_or(&0) as f64;
+
+            // n1 and n2 are greater than 0 for non-trivial datasets
+            let delta = if n1 == 0. || n2 == 0. {
+                1.
+            } else {
+                n1 / (n1 + n2.mul(2.))
+            };
+
+            self.cache.n_delta.insert(i, delta);
+        }
     }
 
     fn get_cached_delta(&self, n: usize) -> f64 {
@@ -691,52 +702,5 @@ mod tests {
         let tokens = sa.sample(empty_query, 3, 10, None).unwrap();
 
         assert_eq!(*tokens.last().unwrap(), a[0]);
-    }
-
-    #[test]
-    fn smoothed_probs_empty_query_exists() {
-        let mut sa = sais("aaa");
-        let vocab = utf16!("a")[0] + 1;
-
-        sa.compute_kn_unigram_probs(Some(100));
-        for n in 0..3 {
-            sa.compute_delta(n);
-        }
-
-        let probs = sa.smoothed_probs(&[], Some(vocab));
-        
-        let residual = (probs.iter().sum::<f64>() - 1.0).abs();
-        assert!(residual < 1e-4);
-    }
-
-    #[test]
-    fn smoothed_probs_exists() {
-        let mut sa = sais("aaaaaaaabc");
-        let query = vec![utf16!("b")[0]];
-        let vocab = utf16!("c")[0] + 1;
-        let a = utf16!("a")[0] as usize;
-        let c = utf16!("c")[0] as usize;
-        
-        sa.compute_kn_unigram_probs(Some(vocab));
-        for n in 0..3 {
-            sa.compute_delta(n);
-        }
-        let sa = sa;
-
-        let smoothed_probs = sa.smoothed_probs(&query, Some(vocab));
-        let bigram_counts = sa.count_next(&query, Some(vocab));
-        let unsmoothed_probs = bigram_counts
-            .iter()
-            .map(|&x| x as f64 / bigram_counts.iter().sum::<usize>() as f64)
-            .collect::<Vec<f64>>();
-        
-        // The naive bigram probability for query 'b' is p(c) = 1.0.
-        assert!(unsmoothed_probs[a] == 0.0);
-        assert!(unsmoothed_probs[c] == 1.0);
-        
-        // The smoothed bigram probabilities interpolate with the lower-order unigram
-        // probabilities where p(a) is high, lowering p(c)
-        assert!(smoothed_probs[a] > 0.1);
-        assert!(smoothed_probs[c] < 1.0);
     }
 }

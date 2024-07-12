@@ -161,8 +161,7 @@ fn sample_unsmoothed_exists() {
 #[test]
 fn sample_unsmoothed_empty_query_exists() {
     let sa = sais("aaa");
-    let empty_query = utf16!("");
-    let seqs = sa.sample_unsmoothed(empty_query, 3, 10, 20, None).unwrap();
+    let seqs = sa.sample_unsmoothed(utf16!(""), 3, 10, 20, None).unwrap();
 
     assert_eq!(*seqs[0].last().unwrap(), utf16!("a")[0]);
     assert_eq!(*seqs[19].last().unwrap(), utf16!("a")[0]);
@@ -171,9 +170,8 @@ fn sample_unsmoothed_empty_query_exists() {
 #[test]
 fn sample_smoothed_exists() {
     let mut sa = sais("aabbccabccba");
-    let a = utf16!("a");
+    let tokens = &sa.sample_smoothed(utf16!("a"), 3, 10, 1, None).unwrap()[0];
 
-    let tokens = &sa.sample_smoothed(a, 3, 10, 1, None).unwrap()[0];
     assert_eq!(tokens.len(), 11);
 }
 
@@ -196,4 +194,38 @@ fn prop_sample() {
     }
 
     qc(prop as fn(String) -> bool);
+}
+
+#[test]
+fn smoothed_probs_exists() {
+    let mut sa = sais("aaaaaaaabc");
+    let query = vec![utf16!("b")[0]];
+    let vocab = utf16!("c")[0] + 1;
+    let a = utf16!("a")[0] as usize;
+    let c = utf16!("c")[0] as usize;
+
+    let smoothed_probs = sa.get_smoothed_probs(&query, Some(vocab));
+    let bigram_counts = sa.count_next(&query, Some(vocab));
+    let unsmoothed_probs = bigram_counts
+        .iter()
+        .map(|&x| x as f64 / bigram_counts.iter().sum::<usize>() as f64)
+        .collect::<Vec<f64>>();
+    
+    // The naive bigram probability for query 'b' is p(c) = 1.0.
+    assert!(unsmoothed_probs[a] == 0.0);
+    assert!(unsmoothed_probs[c] == 1.0);
+    
+    // The smoothed bigram probabilities interpolate with the lower-order unigram
+    // probabilities where p(a) is high, lowering p(c)
+    assert!(smoothed_probs[a] > 0.1);
+    assert!(smoothed_probs[c] < 1.0);
+}
+
+#[test]
+fn smoothed_probs_empty_query_exists() {
+    let mut sa = sais("aaa");
+    let probs = sa.get_smoothed_probs(&[], Some(utf16!("a")[0] + 1));
+    let residual = (probs.iter().sum::<f64>() - 1.0).abs();
+
+    assert!(residual < 1e-4);
 }

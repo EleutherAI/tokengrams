@@ -134,9 +134,9 @@ impl MemmapIndex {
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    // pub fn smoothed_probs(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
-    //     self.table.smoothed_probs(&query, vocab)
-    // }
+    pub fn smoothed_probs(&mut self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
+        self.table.get_smoothed_probs(&query, vocab)
+    }
 
     pub fn is_sorted(&self) -> bool {
         self.table.is_sorted()

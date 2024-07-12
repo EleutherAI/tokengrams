@@ -62,12 +62,12 @@ class MemmapIndex:
     def batch_count_next(self, queries: list[list[int]], vocab: int | None) -> list[list[int]]:
         """Count the occurrences of each token that directly follows each sequence in `queries`."""
 
-    def sample(self, query: list[int], n: int, k: int) -> list[int]:
-        """Autoregressively k characters from conditional distributions based 
-        on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
-        (n - 1) characters all available characters are used.""" 
+    def sample_smoothed(self, query: list[int], n: int, k: int, num_samples: int, vocab: int | None) -> list[list[int]]:
+        """Autoregressively samples num_samples of k characters each from Kneser-Ney smoothed conditional 
+        distributions based on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are 
+        fewer than (n - 1) characters all available characters are used."""
    
-    def batch_sample(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
+    def sample_unsmoothed(self, query: list[int], n: int, k: int, num_samples: int, vocab: int | None) -> list[list[int]]:
         """Autoregressively samples num_samples of k characters each from conditional distributions based 
         on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
         (n - 1) characters all available characters are used."""
