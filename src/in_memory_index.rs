@@ -71,19 +71,7 @@ impl InMemoryIndex {
         self.table.batch_count_next(&queries, vocab)
     }
 
-    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>, PyErr> {
-        self.table
-            .sample(&query, n, k, vocab)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
-    }
-
-    pub fn kn_sample(&self, query: Vec<u16>, n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>, PyErr> {
-        self.table
-            .kn_sample(&query, n, k, vocab)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
-    }
-
-    pub fn batch_sample(
+    pub fn sample_unsmoothed(
         &self,
         query: Vec<u16>,
         n: usize,
@@ -92,12 +80,12 @@ impl InMemoryIndex {
         vocab: Option<u16>
     ) -> Result<Vec<Vec<u16>>, PyErr> {
         self.table
-            .batch_sample(&query, n, k, num_samples, vocab)
+            .sample_unsmoothed(&query, n, k, num_samples, vocab)
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    pub fn kn_batch_sample(
-        &self,
+    pub fn sample_smoothed(
+        &mut self,
         query: Vec<u16>,
         n: usize,
         k: usize,
@@ -105,13 +93,13 @@ impl InMemoryIndex {
         vocab: Option<u16>
     ) -> Result<Vec<Vec<u16>>, PyErr> {
         self.table
-            .kn_batch_sample(&query, n, k, num_samples, vocab)
+            .sample_smoothed(&query, n, k, num_samples, vocab)
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    pub fn kn_probs(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
-        self.table.kn_probs(&query, vocab)
-    }
+    // pub fn smoothed_probs(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
+    //     self.table.smoothed_probs(&query, vocab)
+    // }
 
     pub fn is_sorted(&self) -> bool {
         self.table.is_sorted()
