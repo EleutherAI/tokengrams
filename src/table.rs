@@ -6,8 +6,8 @@ use rand::distributions::{Distribution, WeightedIndex};
 use rand::thread_rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{fmt, ops::Deref, ops::Div, ops::Mul, u64};
 use std::collections::HashMap;
+use std::{fmt, ops::Deref, ops::Mul, u64};
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 /// The table supports n-gram statistics computation and language modeling over text corpora.
@@ -15,7 +15,7 @@ use std::collections::HashMap;
 pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
     text: T,
     table: U,
-    cache: KneserNeyCache
+    cache: KneserNeyCache,
 }
 
 impl<T: PartialEq, U: PartialEq> PartialEq for SuffixTable<T, U> {
@@ -55,7 +55,10 @@ impl SuffixTable<Box<[u16]>, Box<[u64]>> {
         SuffixTable {
             text,
             table: table.into(),
-            cache: KneserNeyCache { unigram_probs: None, n_delta: HashMap::new() },
+            cache: KneserNeyCache {
+                unigram_probs: None,
+                n_delta: HashMap::new(),
+            },
         }
     }
 }
@@ -66,10 +69,13 @@ where
     U: Deref<Target = [u64]> + Sync,
 {
     pub fn from_parts(text: T, table: U) -> Self {
-        SuffixTable { 
-            text, 
-            table, 
-            cache: KneserNeyCache { unigram_probs: None, n_delta: HashMap::new() }, 
+        SuffixTable {
+            text,
+            table,
+            cache: KneserNeyCache {
+                unigram_probs: None,
+                n_delta: HashMap::new(),
+            },
         }
     }
 
@@ -144,7 +150,7 @@ where
     /// Positions are byte indices into `text`.
     ///
     /// If you just need to test existence, then use `contains` since it is
-    /// faster. 
+    /// faster.
     ///
     /// # Example
     ///
@@ -245,26 +251,28 @@ where
 
     fn recurse_count_next(
         &self,
-        counts: &mut Vec<usize>, 
-        query_vec: &mut Vec<u16>, 
-        search_start: usize, 
-        search_end: usize
+        counts: &mut Vec<usize>,
+        query_vec: &mut Vec<u16>,
+        search_start: usize,
+        search_end: usize,
     ) {
         if search_start == search_end {
             return;
         }
 
         let mut idx = search_start + (search_end - search_start) / 2;
-        while self.suffix(idx).eq(query_vec.as_slice()) {
+        let mut suffix = self.suffix(idx);
+        while suffix.eq(query_vec) {
             idx = idx + (search_end - idx) / 2 + 1;
             if idx >= search_end {
                 return;
             }
+            suffix = self.suffix(idx);
         }
 
-        let token = self.suffix(idx)[query_vec.len()];
+        let token = suffix[query_vec.len()];
         query_vec.push(token);
-        let (start, end) = self.range_boundaries(&query_vec, search_start, search_end);
+        let (start, end) = self.range_boundaries(query_vec, search_start, search_end);
         query_vec.pop();
         counts[token as usize] = end - start;
 
@@ -282,8 +290,9 @@ where
             None => u16::MAX as usize + 1,
         };
         let mut counts: Vec<usize> = vec![0; vocab_size];
-        let mut query_vec = query.to_vec();
-    
+        let mut query_vec = Vec::with_capacity(query.len() + 1);
+        query_vec.extend_from_slice(query);
+
         let (range_start, range_end) = self.boundaries(query);
         self.recurse_count_next(&mut counts, &mut query_vec, range_start, range_end);
         counts
@@ -340,14 +349,20 @@ where
         self.smoothed_probs(query, vocab)
     }
 
+    fn get_occurrence_counts(&self, slice: &[usize]) -> (usize, usize) {
+        slice
+            .iter()
+            .fold((0, 0), |(gt_zero_count, eq_one_count), &c| {
+                let gt_zero_count = gt_zero_count + (c > 0) as usize;
+                let eq_one_count = eq_one_count + (c == 1) as usize;
+                (gt_zero_count, eq_one_count)
+            })
+    }
+
     /// Compute Kneser-Ney smoothed token probability distribution given a query.
     /// From "On structuring probabilistic dependences in stochastic language modelling", page 25,
     /// doi:10.1006/csla.1994.1001
-    fn smoothed_probs(
-        &self,
-        query: &[u16],
-        vocab: Option<u16>,
-    ) -> Vec<f64> {        
+    fn smoothed_probs(&self, query: &[u16], vocab: Option<u16>) -> Vec<f64> {
         let p_continuations = if query.is_empty() {
             self.get_cached_kn_unigram_probs().to_vec()
         } else {
@@ -359,24 +374,33 @@ where
         if suffix_count == 0.0 {
             return p_continuations;
         }
-        let unique_suffix_count = count_gt_zero(&counts) as f64;
-        let uncommon_suffix_count = count_eq_one(&counts) as f64;
+        let suffix_count_recip = 1.0 / suffix_count;
+        
+        let (gt_zero_count, eq_one_count) = self.get_occurrence_counts(&counts);
+        let used_suffix_count = gt_zero_count as f64;
+        let used_once_suffix_count = eq_one_count as f64;
 
         // Interpolation budget to be distributed according to lower order n-gram distribution
         let delta = self.get_cached_delta(query.len() + 1);
         let lambda = if delta < 1.0 {
-            delta.mul(unique_suffix_count).div(suffix_count)
+            delta.mul(used_suffix_count).mul(suffix_count_recip)
         } else {
-            uncommon_suffix_count + delta.mul(unique_suffix_count - uncommon_suffix_count).div(suffix_count)
+            used_once_suffix_count
+                + delta
+                    .mul(used_suffix_count - used_once_suffix_count)
+                    .mul(suffix_count_recip)
         };
         
+        let mut probs = Vec::with_capacity(counts.len());
         counts
             .iter()
             .zip(p_continuations.iter())
-            .map(|(&count, &p_continuation)| {
-                (count as f64 - delta).max(0.0).div(suffix_count) + lambda.mul(p_continuation)
-            })
-            .collect()
+            .for_each(|(&count, &p_continuation)| {
+                let prob =
+                    (count as f64 - delta).max(0.0).mul(suffix_count_recip) + lambda.mul(p_continuation);
+                probs.push(prob);
+            });
+        probs
     }
 
     /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model
@@ -386,7 +410,7 @@ where
         n: usize,
         k: usize,
         num_samples: usize,
-        vocab: Option<u16>
+        vocab: Option<u16>,
     ) -> Result<Vec<Vec<u16>>> {
         self.compute_deltas(n);
         self.compute_kn_unigram_probs(vocab);
@@ -398,14 +422,7 @@ where
     }
 
     /// Autoregressively sample k characters from a Kneser-Ney smoothed n-gram model
-    fn kn_sample(
-        &self,
-        query: &[u16],
-        n: usize,
-        k: usize,
-        vocab: Option<u16>,
-    ) -> Result<Vec<u16>> {
-
+    fn kn_sample(&self, query: &[u16], n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>> {
         let mut rng = thread_rng();
         let mut sequence = Vec::from(query);
 
@@ -413,7 +430,6 @@ where
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
             let probs = self.smoothed_probs(prev, vocab);
-
             let dist = WeightedIndex::new(&probs)?;
             let sampled_index = dist.sample(&mut rng);
 
@@ -425,12 +441,12 @@ where
 
     fn recurse_count_ngrams(
         &self,
-        search_start: usize, 
-        search_end: usize, 
-        n: usize, 
-        query: &[u16], 
-        target_n: usize, 
-        count_map: &mut HashMap<usize, usize>
+        search_start: usize,
+        search_end: usize,
+        n: usize,
+        query: &[u16],
+        target_n: usize,
+        count_map: &mut HashMap<usize, usize>,
     ) {
         if search_start == search_end {
             return;
@@ -500,7 +516,13 @@ where
         *self.cache.n_delta.get(&n).unwrap()
     }
 
-    fn recurse_kn_unigram_probs(&self, search_start: usize, search_end: usize, n: usize, unique_prefix_counts: &mut Vec<usize>) {
+    fn recurse_kn_unigram_probs(
+        &self,
+        search_start: usize,
+        search_end: usize,
+        n: usize,
+        unique_prefix_counts: &mut Vec<usize>,
+    ) {
         if search_start == search_end {
             return;
         }
@@ -550,10 +572,13 @@ where
         let mut counts = vec![0; vocab];
         let (start, end) = self.boundaries(&[]);
         self.recurse_kn_unigram_probs(start, end, 1, &mut counts);
-        
-        let unigram_probs: Vec<f64> = counts.iter().map(|&count| {
-            (count as f64 + eps) / (counts.iter().sum::<usize>() as f64 + eps.mul(vocab as f64))
-        }).collect();
+
+        let unigram_probs: Vec<f64> = counts
+            .iter()
+            .map(|&count| {
+                (count as f64 + eps) / (counts.iter().sum::<usize>() as f64 + eps.mul(vocab as f64))
+            })
+            .collect();
 
         self.cache.unigram_probs = Some(unigram_probs);
     }
@@ -561,7 +586,7 @@ where
     fn get_cached_kn_unigram_probs(&self) -> &Vec<f64> {
         self.cache.unigram_probs.as_ref().unwrap()
     }
-    
+
     /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
     pub fn is_sorted(&self) -> bool {
         self.table
@@ -601,16 +626,6 @@ where
         }
     }
     left
-}
-
-/// Count the number of elements in a slice that are greater than zero.
-fn count_gt_zero(slice: &[usize]) -> usize {
-    slice.iter().filter(|&&c| c > 0).count()
-}
-
-/// Count the number of elements in a slice that equal one.
-fn count_eq_one(slice: &[usize]) -> usize {
-    slice.iter().filter(|&&c| c == 1).count()
 }
 
 #[cfg(test)]
