@@ -370,12 +370,14 @@ where
         };
         
         let counts = self.count_next(query, vocab);
-        let suffix_count = counts.iter().sum::<usize>() as f64;
-        if suffix_count == 0.0 {
-            return p_continuations;
-        }
-        let suffix_count_recip = 1.0 / suffix_count;
-        
+        let suffix_count_recip = {
+            let suffix_count: usize = counts.iter().sum();
+            if suffix_count == 0 {
+                return p_continuations;
+            }
+            1.0 / suffix_count as f64
+        };
+
         let (gt_zero_count, eq_one_count) = self.get_occurrence_counts(&counts);
         let used_suffix_count = gt_zero_count as f64;
         let used_once_suffix_count = eq_one_count as f64;
@@ -569,14 +571,17 @@ where
             None => max_vocab,
         };
 
+        // Count the number of unique bigrams that end with each token
         let mut counts = vec![0; vocab];
         let (start, end) = self.boundaries(&[]);
         self.recurse_kn_unigram_probs(start, end, 1, &mut counts);
 
+        let total_count: usize = counts.iter().sum();
+        let adjusted_total_count = total_count as f64 + eps.mul(vocab as f64);
         let unigram_probs: Vec<f64> = counts
             .iter()
             .map(|&count| {
-                (count as f64 + eps) / (counts.iter().sum::<usize>() as f64 + eps.mul(vocab as f64))
+                (count as f64 + eps) / adjusted_total_count
             })
             .collect();
 

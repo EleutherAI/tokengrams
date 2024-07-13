@@ -183,26 +183,6 @@ fn sample_smoothed_unigrams_exists() {
     assert_eq!(tokens.len(), 11);
 }
 
-fn large_index() -> SuffixTable {
-    use rand::{distributions::Alphanumeric, Rng};
-
-    let random_string: String = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(10_000_000)
-        .map(char::from)
-        .collect();
-    sais(&random_string)
-}
-
-#[test]
-fn benchmark() {
-    let mut sa = large_index();
-    // let _ = sa.sample_unsmoothed(&[], 1, 2049, 100, None);
-    let instant = std::time::Instant::now();
-    let _ = sa.sample_smoothed(&[], 3, 2049, 1024, None);
-    println!("Time elapsed: {:?}", instant.elapsed());
-}
-
 #[test]
 fn prop_sample() {
     fn prop(s: String) -> bool {
