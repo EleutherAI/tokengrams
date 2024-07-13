@@ -256,31 +256,36 @@ where
         search_start: usize,
         search_end: usize,
     ) {
-        if search_start == search_end {
+        if search_start >= search_end {
             return;
         }
 
-        let mut idx = search_start + (search_end - search_start) / 2;
-        let mut suffix = self.suffix(idx);
-        while suffix.eq(query_vec) {
-            idx = idx + (search_end - idx) / 2 + 1;
-            if idx >= search_end {
-                return;
-            }
-            suffix = self.suffix(idx);
+        let mut start = search_start;
+        let mid = (start + search_end) / 2;
+
+        let mut suffix = self.suffix(mid);
+        while start < search_end && suffix.eq(query_vec) {
+            start = mid + 1;
+            let mid = (start + search_end) / 2;
+            suffix = self.suffix(mid);
+        }
+
+        // If all suffixes in the range match the query, return
+        if start == search_end {
+            return;
         }
 
         let token = suffix[query_vec.len()];
         query_vec.push(token);
-        let (start, end) = self.range_boundaries(query_vec, search_start, search_end);
+        let (token_start, token_end) = self.range_boundaries(query_vec, start, search_end);
         query_vec.pop();
-        counts[token as usize] = end - start;
+        counts[token as usize] = token_end - token_start;
 
-        if search_start < start {
-            self.recurse_count_next(counts, query_vec, search_start, start);
+        if start < token_start {
+            self.recurse_count_next(counts, query_vec, start, token_start);
         }
-        if end < search_end {
-            self.recurse_count_next(counts, query_vec, end, search_end);
+        if token_end < search_end {
+            self.recurse_count_next(counts, query_vec, token_end, search_end);
         }
     }
 
