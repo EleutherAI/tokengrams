@@ -252,7 +252,7 @@ where
     fn recurse_count_next(
         &self,
         counts: &mut Vec<usize>,
-        query_vec: &mut Vec<u16>,
+        query: &mut Vec<u16>,
         search_start: usize,
         search_end: usize,
     ) {
@@ -260,32 +260,26 @@ where
             return;
         }
 
-        let mut start = search_start;
-        let mid = (start + search_end) / 2;
-
+        let mid = (search_start + search_end) / 2;
         let mut suffix = self.suffix(mid);
-        while start < search_end && suffix.eq(query_vec) {
-            start = mid + 1;
-            let mid = (start + search_end) / 2;
-            suffix = self.suffix(mid);
+        if suffix.eq(query) {
+            if mid + 1 == search_end {
+                return;
+            }
+            suffix = self.suffix(mid + 1);
         }
 
-        // If all suffixes in the range match the query, return
-        if start == search_end {
-            return;
-        }
-
-        let token = suffix[query_vec.len()];
-        query_vec.push(token);
-        let (token_start, token_end) = self.range_boundaries(query_vec, start, search_end);
-        query_vec.pop();
+        let token = suffix[query.len()];
+        query.push(token);
+        let (token_start, token_end) = self.range_boundaries(query, search_start, search_end);
+        query.pop();
         counts[token as usize] = token_end - token_start;
 
-        if start < token_start {
-            self.recurse_count_next(counts, query_vec, start, token_start);
+        if search_start < token_start {
+            self.recurse_count_next(counts, query, search_start, token_start);
         }
         if token_end < search_end {
-            self.recurse_count_next(counts, query_vec, token_end, search_end);
+            self.recurse_count_next(counts, query, token_end, search_end);
         }
     }
 
@@ -459,16 +453,17 @@ where
             return;
         }
 
-        // Find median of indices that ending in at least one additional token
-        let mut idx = search_start + (search_end - search_start) / 2;
-        while self.suffix(idx).eq(query) {
-            idx += (search_end - idx) / 2 + 1;
-            if idx >= search_end {
+        // Find median of indices that end in at least one additional token
+        let mid = (search_start + search_end) / 2;
+        let mut suffix = self.suffix(mid);
+        if suffix.eq(query) {
+            if mid + 1 == search_end {
                 return;
             }
+            suffix = self.suffix(mid + 1);
         }
 
-        let token = self.suffix(idx)[query.len()];
+        let token = suffix[query.len()];
         let query_vec = [query, &[token]].concat();
 
         let (start, end) = self.range_boundaries(&query_vec, search_start, search_end);
@@ -534,23 +529,22 @@ where
             return;
         }
 
-        // Find median of indices that ending in at least one additional token
-        let mut idx = search_start + (search_end - search_start) / 2;
-        while self.suffix(idx).len() == 1 {
-            idx += (search_end - idx) / 2 + 1;
-            if idx >= search_end {
+        // Find median of indices that end in at least one additional token
+        let mid = (search_start + search_end) / 2;
+        let mut suffix = self.suffix(mid);
+        if suffix.len() == 1 {
+            if mid + 1 == search_end {
                 return;
             }
+            suffix = self.suffix(mid + 1);
         }
 
-        let token = self.suffix(idx)[1] as usize;
-        let query_vec = &self.suffix(idx)[..2];
-        let (start, end) = self.range_boundaries(&query_vec, search_start, search_end);
+        let (start, end) = self.range_boundaries(&suffix[..2], search_start, search_end);
         if n < 2 {
             // Search for unique second tokens within the current first token range
             self.recurse_kn_unigram_probs(start, end, n + 1, unique_prefix_counts);
         } else {
-            unique_prefix_counts[token] += 1;
+            unique_prefix_counts[suffix[1] as usize] += 1;
         }
 
         // Recurse on the left and right halves of the table
