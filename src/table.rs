@@ -269,11 +269,9 @@ where
             None => u16::MAX as usize + 1,
         };
         let mut counts: Vec<usize> = vec![0; vocab_size];
-        let mut query_vec = Vec::with_capacity(query.len() + 1);
-        query_vec.extend_from_slice(query);
 
         let (range_start, range_end) = self.boundaries(query);
-        self.recurse_count_next(&mut counts, &mut query_vec, range_start, range_end);
+        self.recurse_count_next(&mut counts, query, range_start, range_end);
         counts
     }
 
@@ -289,7 +287,7 @@ where
     fn recurse_count_next(
         &self,
         counts: &mut Vec<usize>,
-        query: &mut Vec<u16>,
+        query: &[u16],
         search_start: usize,
         search_end: usize,
     ) {
@@ -299,18 +297,15 @@ where
 
         let mid = (search_start + search_end) / 2;
         let mut suffix = self.suffix(mid);
-        if suffix.eq(query) {
+        if suffix == query {
             if mid + 1 == search_end {
                 return;
             }
             suffix = self.suffix(mid + 1);
         }
 
-        let token = suffix[query.len()];
-        query.push(token);
-        let (token_start, token_end) = self.range_boundaries(query, search_start, search_end);
-        query.pop();
-        counts[token as usize] = token_end - token_start;
+        let (token_start, token_end) = self.range_boundaries(&suffix[..query.len() + 1], search_start, search_end);
+        counts[suffix[query.len()] as usize] = token_end - token_start;
 
         if search_start < token_start {
             self.recurse_count_next(counts, query, search_start, token_start);
@@ -479,22 +474,19 @@ where
             return;
         }
 
-        // Find median of indices that end in at least one additional token
+        // Find median of indices ending with at least one additional token
         let mid = (search_start + search_end) / 2;
         let mut suffix = self.suffix(mid);
-        if suffix.eq(query) {
+        if suffix == query {
             if mid + 1 == search_end {
                 return;
             }
             suffix = self.suffix(mid + 1);
         }
 
-        let token = suffix[query.len()];
-        let query_vec = [query, &[token]].concat();
-
-        let (start, end) = self.range_boundaries(&query_vec, search_start, search_end);
+        let (start, end) = self.range_boundaries(&suffix[..query.len() + 1], search_start, search_end);
         if n < target_n {
-            self.recurse_count_ngrams(start, end, n + 1, &query_vec, target_n, count_map);
+            self.recurse_count_ngrams(start, end, n + 1, &suffix[..query.len() + 1], target_n, count_map);
         } else {
             *count_map.entry(end - start).or_insert(0) += 1;
         }
@@ -582,7 +574,7 @@ where
             return;
         }
 
-        // Find median of indices that end in at least one additional token
+        // Find median of indices ending in at least one additional token
         let mid = (search_start + search_end) / 2;
         let mut suffix = self.suffix(mid);
         if suffix.len() == 1 {
