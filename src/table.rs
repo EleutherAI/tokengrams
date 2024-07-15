@@ -286,7 +286,7 @@ where
     // count_next helper method.
     fn recurse_count_next(
         &self,
-        counts: &mut Vec<usize>,
+        counts: &mut [usize],
         query: &[u16],
         search_start: usize,
         search_end: usize,
@@ -355,7 +355,7 @@ where
     pub fn get_smoothed_probs(&mut self, query: &[u16], vocab: Option<u16>) -> Vec<f64> {
         self.compute_deltas(query.len() + 1);
         self.compute_kn_unigram_probs(vocab);
-        self.smoothed_probs(query, vocab)
+        self.smoothed_probs(query, vocab, false)
     }
 
     /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
@@ -379,14 +379,18 @@ where
     /// Compute Kneser-Ney smoothed token probability distribution given a query.
     /// From "On structuring probabilistic dependences in stochastic language modelling", page 25,
     /// doi:10.1006/csla.1994.1001
-    fn smoothed_probs(&self, query: &[u16], vocab: Option<u16>) -> Vec<f64> {
+    fn smoothed_probs(&self, query: &[u16], vocab: Option<u16>, lower_order: bool) -> Vec<f64> {
         let p_continuations = if query.is_empty() {
             self.get_cached_kn_unigram_probs().to_vec()
         } else {
-            self.smoothed_probs(&query[1..], vocab)
+            self.smoothed_probs(&query[1..], vocab, true)
         };
-        
-        let counts = self.count_next(query, vocab);
+
+        let counts = if lower_order {
+            self.low_order_counts(query, vocab)
+        } else {
+            self.count_next(query, vocab)
+        };
         let suffix_count_recip = {
             let suffix_count: usize = counts.iter().sum();
             if suffix_count == 0 {
@@ -441,7 +445,7 @@ where
         for _ in 0..k {
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
-            let probs = self.smoothed_probs(prev, vocab);
+            let probs = self.smoothed_probs(prev, vocab, false);
             let dist = WeightedIndex::new(&probs)?;
             let sampled_index = dist.sample(&mut rng);
 
@@ -561,6 +565,68 @@ where
     fn get_cached_kn_unigram_probs(&self) -> &Vec<f64> {
         self.cache.unigram_probs.as_ref().unwrap()
     }
+
+    // Find every slice of the table that starts with a unique token and then query. Print a line when this is found.
+    #[allow(dead_code)]
+    fn divide_low_order_counts(
+        &self,
+        query: &[u16],
+        len: usize,
+        search_start: usize,
+        search_end: usize,
+        vocab: Option<u16>,
+        counts: &mut [usize],
+    ) {
+        if search_start >= search_end {
+            return;
+        }
+
+        let vocab_size: usize = match vocab {
+            Some(size) => size as usize,
+            None => u16::MAX as usize + 1,
+        };
+
+        let mid = (search_start + search_end) / 2;
+        let mut suffix = self.suffix(mid);
+        if suffix == query {
+            if mid + 1 == search_end {
+                return;
+            }
+            suffix = self.suffix(mid + 1);
+        }
+
+        let (token_start, token_end) = self.range_boundaries(&suffix[..1], search_start, search_end);
+
+        // Count the [w, ...query, v] n-grams
+        let prefix = [&suffix[..1], query].concat();
+        let (prefix_start, prefix_end) = self.range_boundaries(&prefix, token_start, token_end);
+        // are we just doing count next with prefix?
+        let prefix_counts = &mut counts[suffix[0] as usize * vocab_size..suffix[0] as usize * vocab_size + vocab_size];
+        self.recurse_count_next(prefix_counts, &prefix, prefix_start, prefix_end);
+
+        if search_start < token_start {
+            self.divide_low_order_counts(query, len, search_start, token_start, vocab, counts);
+        }
+        if token_end < search_end {
+            self.divide_low_order_counts(query, len, token_end, search_end, vocab, counts);
+        }
+        println!("done");
+    }
+
+    fn low_order_counts(
+        &self,
+        query: &[u16],
+        vocab: Option<u16>
+    ) -> Vec<usize>{
+        let vocab_size: usize = match vocab {
+            Some(size) => size as usize,
+            None => u16::MAX as usize + 1,
+        };
+        let mut counts: Vec<usize> = vec![0; vocab_size * vocab_size];
+        let (range_start, range_end) = self.boundaries(query);
+        self.divide_low_order_counts(query, query.len(), range_start, range_end, vocab, &mut counts);
+        counts.chunks(vocab_size).map(|chunk| self.count_gt_zero(chunk)).collect()
+    }
     
     // compute_kn_unigram_probs helper method.
     fn recurse_kn_unigram_probs(
@@ -570,6 +636,8 @@ where
         n: usize,
         unique_prefix_counts: &mut Vec<usize>,
     ) {
+        let target_n: usize = 2;
+
         if search_start == search_end {
             return;
         }
@@ -584,21 +652,29 @@ where
             suffix = self.suffix(mid + 1);
         }
 
-        let (start, end) = self.range_boundaries(&suffix[..2], search_start, search_end);
-        if n < 2 {
-            // Search for unique second tokens within the current first token range
-            self.recurse_kn_unigram_probs(start, end, n + 1, unique_prefix_counts);
-        } else {
+        let (start, end) = self.range_boundaries(&suffix[..target_n], search_start, search_end);
+        if n == target_n {
             unique_prefix_counts[suffix[1] as usize] += 1;
+        } else {
+            // Recurse within the current range to search for unique second tokens
+            self.recurse_kn_unigram_probs(start, end, n + 1, unique_prefix_counts);
         }
 
-        // Recurse on the left and right halves of the table
+        // Recurse to the left and right halves of the table
         if search_start < start {
             self.recurse_kn_unigram_probs(search_start, start, n, unique_prefix_counts);
         }
         if end < search_end {
             self.recurse_kn_unigram_probs(end, search_end, n, unique_prefix_counts);
         }
+    }
+
+    fn count_gt_zero(&self, slice: &[usize]) -> usize {
+        slice
+            .iter()
+            .fold(0, |gt_zero_count, &c| {
+                gt_zero_count + (c > 0) as usize
+            })
     }
     
 }
