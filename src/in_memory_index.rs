@@ -51,6 +51,10 @@ impl InMemoryIndex {
         })
     }
 
+    pub fn is_sorted(&self) -> bool {
+        self.table.is_sorted()
+    }
+
     pub fn contains(&self, query: Vec<u16>) -> bool {
         self.table.contains(&query)
     }
@@ -101,8 +105,12 @@ impl InMemoryIndex {
         self.table.get_smoothed_probs(&query, vocab)
     }
 
-    pub fn is_sorted(&self) -> bool {
-        self.table.is_sorted()
+    pub fn batch_smoothed_probs(&mut self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<f64>> {
+        self.table.batch_get_smoothed_probs(&queries, vocab)
+    }
+
+    pub fn estimate_deltas(&mut self, n: usize) {
+        self.table.estimate_deltas(n);
     }
 
     pub fn save(&self, path: String) -> PyResult<()> {

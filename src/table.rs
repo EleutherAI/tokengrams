@@ -350,12 +350,24 @@ where
         Ok(sequence)
     }
 
-    /// Compute interpolated Kneser-Ney smoothed token probability distribution using all previous
+    /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
     pub fn get_smoothed_probs(&mut self, query: &[u16], vocab: Option<u16>) -> Vec<f64> {
-        self.compute_deltas(query.len() + 1);
-        self.compute_kn_unigram_probs(vocab);
+        self.estimate_deltas(1);
+        self.compute_smoothed_unigram_probs(vocab);
         self.smoothed_probs(query, vocab)
+    }
+
+    /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
+    /// tokens in the query.
+    pub fn batch_get_smoothed_probs(&mut self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<f64>> {
+        self.estimate_deltas(1);
+        self.compute_smoothed_unigram_probs(vocab);
+
+        queries
+            .into_par_iter()
+            .map(|query| self.smoothed_probs(query, vocab))
+            .collect()
     }
 
     /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
@@ -367,8 +379,8 @@ where
         num_samples: usize,
         vocab: Option<u16>,
     ) -> Result<Vec<Vec<u16>>> {
-        self.compute_deltas(n);
-        self.compute_kn_unigram_probs(vocab);
+        self.estimate_deltas(1);
+        self.compute_smoothed_unigram_probs(vocab);
 
         (0..num_samples)
             .into_par_iter()
@@ -376,12 +388,13 @@ where
             .collect()
     }
         
-    /// Compute Kneser-Ney smoothed token probability distribution given a query.
-    /// From "On structuring probabilistic dependences in stochastic language modelling", page 25,
+    /// Returns the Kneser-Ney smoothed token probability distribution for a query 
+    /// continuation using absolute discounting as described in
+    /// "On structuring probabilistic dependences in stochastic language modelling", page 25,
     /// doi:10.1006/csla.1994.1001
     fn smoothed_probs(&self, query: &[u16], vocab: Option<u16>) -> Vec<f64> {
         let p_continuations = if query.is_empty() {
-            self.get_cached_kn_unigram_probs().to_vec()
+            self.get_cached_smoothed_unigram_probs().to_vec()
         } else {
             self.smoothed_probs(&query[1..], vocab)
         };
@@ -422,7 +435,7 @@ where
         probs
     }
 
-    /// Get tuple containing the number of elements that are greater than 0 and the number of elements that equal 1.
+    /// Returns tuple of the number of elements that are greater than 0 and the number of elements that equal 1.
     fn get_occurrence_counts(&self, slice: &[usize]) -> (usize, usize) {
         slice
             .iter()
@@ -451,9 +464,13 @@ where
         Ok(sequence)
     }
 
-    // For a given n, produce a map from an occurrence count to the number of unique n-grams with that occurrence count.
+    // For a given n, produce a map from an occurrence count in (1, 2) to the number of unique n-grams with that occurrence count.
     fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
-        let mut count_map: HashMap<usize, usize> = HashMap::new();
+        let mut count_map: HashMap<usize, usize> = [(1, 0), (2, 0)]
+            .iter()
+            .cloned()
+            .collect();
+
         let query = vec![0; 0];
         let (range_start, range_end) = self.boundaries(&query);
         self.recurse_count_ngrams(range_start, range_end, 1, &query, n, &mut count_map);
@@ -499,16 +516,17 @@ where
         }
     }
     
-    /// Compute delta using the estimate in https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16.
-    /// Based on derivations in "On structuring probabilistic dependences in stochastic language modelling"
-    /// page 12, doi:10.1006/csla.1994.1001
-    fn compute_deltas(&mut self, n: usize) {
+    /// Warning: O(k**n) where k is vocabulary size, use with caution.
+    /// Improve smoothed model quality by replacing the default delta hyperparameters
+    /// for models of order n and below with improved estimates over the entire index.
+    /// https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16."""
+    pub fn estimate_deltas(&mut self, n: usize) {
         for i in 1..n + 1 {
             if self.cache.n_delta.contains_key(&i) {
                 continue;
             }
-
-            let count_map = self.count_ngrams(n);
+            
+            let count_map = self.count_ngrams(i);
             let n1 = *count_map.get(&1).unwrap_or(&0) as f64;
             let n2 = *count_map.get(&2).unwrap_or(&0) as f64;
 
@@ -524,30 +542,26 @@ where
     }
 
     fn get_cached_delta(&self, n: usize) -> f64 {
-        *self.cache.n_delta.get(&n).unwrap()
+        *self.cache.n_delta.get(&n).unwrap_or(&0.5)
     }
 
-    /// Determine Kneser-Ney unigram probabilities of each token, defined as the number of unique bigrams
-    /// in text that end with a token divided by the number of unique bigrams.
-    fn compute_kn_unigram_probs(&mut self, vocab: Option<u16>) {
+    /// Returns unigram probabilities with additive smoothing applied.
+    fn compute_smoothed_unigram_probs(&mut self, vocab: Option<u16>) {
         if let Some(_) = &self.cache.unigram_probs {
             return;
         }
 
         let eps = 1e-9;
         let max_vocab = u16::MAX as usize + 1;
-        let vocab = match vocab {
+        let vocab_size = match vocab {
             Some(size) => size as usize,
             None => max_vocab,
         };
 
         // Count the number of unique bigrams that end with each token
-        let mut counts = vec![0; vocab];
-        let (start, end) = self.boundaries(&[]);
-        self.recurse_kn_unigram_probs(start, end, 1, &mut counts);
-
+        let counts = self.count_next(&[], vocab);
         let total_count: usize = counts.iter().sum();
-        let adjusted_total_count = total_count as f64 + eps.mul(vocab as f64);
+        let adjusted_total_count = total_count as f64 + eps.mul(vocab_size as f64);
         let unigram_probs: Vec<f64> = counts
             .iter()
             .map(|&count| {
@@ -558,49 +572,9 @@ where
         self.cache.unigram_probs = Some(unigram_probs);
     }
 
-    fn get_cached_kn_unigram_probs(&self) -> &Vec<f64> {
+    fn get_cached_smoothed_unigram_probs(&self) -> &Vec<f64> {
         self.cache.unigram_probs.as_ref().unwrap()
     }
-    
-    // compute_kn_unigram_probs helper method.
-    fn recurse_kn_unigram_probs(
-        &self,
-        search_start: usize,
-        search_end: usize,
-        n: usize,
-        unique_prefix_counts: &mut Vec<usize>,
-    ) {
-        if search_start == search_end {
-            return;
-        }
-
-        // Find median of indices ending in at least one additional token
-        let mid = (search_start + search_end) / 2;
-        let mut suffix = self.suffix(mid);
-        if suffix.len() == 1 {
-            if mid + 1 == search_end {
-                return;
-            }
-            suffix = self.suffix(mid + 1);
-        }
-
-        let (start, end) = self.range_boundaries(&suffix[..2], search_start, search_end);
-        if n < 2 {
-            // Search for unique second tokens within the current first token range
-            self.recurse_kn_unigram_probs(start, end, n + 1, unique_prefix_counts);
-        } else {
-            unique_prefix_counts[suffix[1] as usize] += 1;
-        }
-
-        // Recurse on the left and right halves of the table
-        if search_start < start {
-            self.recurse_kn_unigram_probs(search_start, start, n, unique_prefix_counts);
-        }
-        if end < search_end {
-            self.recurse_kn_unigram_probs(end, search_end, n, unique_prefix_counts);
-        }
-    }
-    
 }
 
 impl fmt::Debug for SuffixTable {
@@ -682,17 +656,17 @@ mod tests {
     }
 
     #[test]
-    fn kn_unigram_probs_exists() {
+    fn unigram_probs_exists() {
         let mut sa = sais("aaab");
-        sa.compute_kn_unigram_probs(Some(100));
+        sa.compute_smoothed_unigram_probs(Some(100));
         let sa = sa;
 
-        let kn_unigram_prob = sa.get_cached_kn_unigram_probs();
-        let residual = (kn_unigram_prob.iter().sum::<f64>() - 1.0).abs();
+        let unigram_probs = sa.get_cached_smoothed_unigram_probs();
+        let residual = (unigram_probs.iter().sum::<f64>() - 1.0).abs();
         assert!(residual < 1e-4);
 
         // Additive smoothing results in non-zero probability on unused vocabulary
-        assert!(kn_unigram_prob[0] > 0.0);
+        assert!(unigram_probs[0] > 0.0);
     }
 
     #[test]
