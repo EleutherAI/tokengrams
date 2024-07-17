@@ -23,7 +23,7 @@ class ShardedMemmapIndex:
     def is_sorted(self) -> bool:
         """Check if each individual suffix table shard is sorted lexicographically. 
         This is always true for valid indices."""
-        return all([shard.is_sorted() for shard in self.shards])
+        self.shards.iter().all(|shard| shard.is_sorted())
     
     
     def contains(self, query: list[int]) -> bool:
