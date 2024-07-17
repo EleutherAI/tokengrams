@@ -102,15 +102,9 @@ where
 
     /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
     pub fn is_sorted(&self) -> bool {
-        if self.table.len() > 100_000 {
-            self.table
-                .par_windows(2)
-                .all(|pair| self.text[pair[0] as usize..] <= self.text[pair[1] as usize..])
-        } else {
-            self.table
-                .windows(2)
-                .all(|pair| self.text[pair[0] as usize..] <= self.text[pair[1] as usize..])
-        }
+        self.table
+            .par_windows(2)
+            .all(|pair| self.text[pair[0] as usize..] <= self.text[pair[1] as usize..])
     }
 
     /// Returns the suffix at index `i`.
@@ -466,12 +460,8 @@ where
 
     // For a given n, produce a map from an occurrence count in (1, 2) to the number of unique n-grams with that occurrence count.
     fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
-        let mut count_map: HashMap<usize, usize> = [(1, 0), (2, 0)]
-            .iter()
-            .cloned()
-            .collect();
-
-        let query = vec![0; 0];
+        let mut count_map = HashMap::from([(1, 0), (2, 0)]);
+        let query = Vec::new();
         let (range_start, range_end) = self.boundaries(&query);
         self.recurse_count_ngrams(range_start, range_end, 1, &query, n, &mut count_map);
         count_map
