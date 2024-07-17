@@ -2,7 +2,7 @@
 name = "tokengrams"
 description = "Compute n-gram statistics and model language over pre-tokenized text corpora used to train large language models." 
 license = "MIT"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

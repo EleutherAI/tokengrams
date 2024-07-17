@@ -88,6 +88,10 @@ impl MemmapIndex {
         })
     }
 
+    pub fn is_sorted(&self) -> bool {
+        self.table.is_sorted()
+    }
+
     pub fn contains(&self, query: Vec<u16>) -> bool {
         self.table.contains(&query)
     }
@@ -108,25 +112,41 @@ impl MemmapIndex {
         self.table.batch_count_next(&queries, vocab)
     }
 
-    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
-        self.table
-            .sample(&query, n, k)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
-    }
-
-    pub fn batch_sample(
+    pub fn sample_unsmoothed(
         &self,
         query: Vec<u16>,
         n: usize,
         k: usize,
         num_samples: usize,
+        vocab: Option<u16>,
     ) -> Result<Vec<Vec<u16>>, PyErr> {
         self.table
-            .batch_sample(&query, n, k, num_samples)
+            .sample_unsmoothed(&query, n, k, num_samples, vocab)
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    pub fn is_sorted(&self) -> bool {
-        self.table.is_sorted()
+    pub fn sample_smoothed(
+        &mut self,
+        query: Vec<u16>,
+        n: usize,
+        k: usize,
+        num_samples: usize,
+        vocab: Option<u16>,
+    ) -> Result<Vec<Vec<u16>>, PyErr> {
+        self.table
+            .sample_smoothed(&query, n, k, num_samples, vocab)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    pub fn smoothed_probs(&mut self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
+        self.table.get_smoothed_probs(&query, vocab)
+    }
+
+    pub fn batch_smoothed_probs(&mut self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<f64>> {
+        self.table.batch_get_smoothed_probs(&queries, vocab)
+    }
+
+    pub fn estimate_deltas(&mut self, n: usize) {
+        self.table.estimate_deltas(n);
     }
 }
