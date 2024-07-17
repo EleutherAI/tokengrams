@@ -23,7 +23,7 @@ class ShardedMemmapIndex:
     def is_sorted(self) -> bool:
         """Check if each individual suffix table shard is sorted lexicographically. 
         This is always true for valid indices."""
-        self.shards.iter().all(|shard| shard.is_sorted())
+        return all([shard.is_sorted() for shard in self.shards])
     
     
     def contains(self, query: list[int]) -> bool:
@@ -44,10 +44,8 @@ class ShardedMemmapIndex:
 
     def batch_count_next(self, queries: list[list[int]], vocab: int | None) -> list[list[int]]:
         """Count the occurrences of each token that directly follows each sequence in `queries`."""
-        vocab = vocab or 2**16 + 1
-
         shard_counts = [shard.batch_count_next(queries, vocab) for shard in self.shards]
-        counts = [[0] * vocab] * len(queries)
+        counts = [[0] * len(shard_counts[0][0])] * len(queries)
         for shard_count in shard_counts:
             for i, query_count in enumerate(shard_count):
                 for j, count in enumerate(query_count):
@@ -66,16 +64,15 @@ class ShardedMemmapIndex:
                 # look at the previous (n - 1) characters to predict the n-gram completion
                 start = max(0, len(sequence) - (n - 1))
                 prev = sequence[start:]
-
-                counts = self.count_next(prev, vocab)
                 try:
+                    counts: list[int] = self.count_next(prev, vocab)
                     sampled_index = random.choices(
                         range(len(counts)),
                         weights=counts, k=1
                     )[0]
                 except ValueError:
-                    # Handle edge case where final token in corpus only occurs once 
-                    # and has no continuations by falling back to unigram distribution
+                    # Handle edge case where final n-gram in corpus occurs only once 
+                    # at the end of the table by falling back to unigram distribution
                     counts = self.count_next([], vocab)
                     sampled_index = random.choices(
                         range(len(counts)),
