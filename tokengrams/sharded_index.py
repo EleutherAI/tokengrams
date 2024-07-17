@@ -1,4 +1,5 @@
 from tokengrams import MemmapIndex
+import random
 
 class ShardedMemmapIndex:
     def __init__(self, files: list[tuple[str, str]]) -> None:
@@ -7,6 +8,7 @@ class ShardedMemmapIndex:
             MemmapIndex(token_file, index_file) 
             for token_file, index_file in files
         ]
+        assert all([shard.is_sorted() for shard in self.shards])
 
     
     @staticmethod
@@ -31,7 +33,7 @@ class ShardedMemmapIndex:
     def count_next(self, query: list[int], vocab: int | None) -> list[int]:
         """Count the occurrences of each token directly following `query`."""
         counts = [shard.count_next(query, vocab) for shard in self.shards]
-        return [sum(counts[i]) for i in range(len(counts))]
+        return [sum([count[i] for count in counts]) for i in range(len(counts[0]))]
 
 
     def batch_count_next(self, queries: list[list[int]], vocab: int | None) -> list[list[int]]:
@@ -46,3 +48,33 @@ class ShardedMemmapIndex:
                     counts[i][j] += count
 
         return counts
+
+
+    def sample(self, query: list[int], n: int, k: int, num_samples: int, vocab: int | None) -> list[list[int]]:
+        """Autoregressively k characters from conditional distributions based 
+        on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
+        (n - 1) characters all available characters are used.""" 
+        sequences = [query.copy()] * num_samples
+        for sequence in sequences:
+            for _ in range(k):
+                # look at the previous (n - 1) characters to predict the n-gram completion
+                start = max(0, len(sequence) - (n - 1))
+                prev = sequence[start:]
+
+                counts = self.count_next(prev, vocab)
+                try:
+                    sampled_index = random.choices(
+                        range(len(counts)),
+                        weights=counts, k=1
+                    )[0]
+                except ValueError:
+                    # Handle edge case where final token in corpus only occurs once 
+                    # and has no continuations by falling back to unigram distribution
+                    counts = self.count_next([], vocab)
+                    sampled_index = random.choices(
+                        range(len(counts)),
+                        weights=counts, k=1
+                    )[0]
+                sequence.append(sampled_index)
+
+        return sequences

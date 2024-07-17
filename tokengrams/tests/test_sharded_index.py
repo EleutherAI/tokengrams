@@ -1,9 +1,7 @@
 from itertools import pairwise
 from tempfile import NamedTemporaryFile
-import os
-
+import random
 from tokengrams import MemmapIndex
-from hypothesis import given, strategies as st
 
 import numpy as np
 
@@ -23,12 +21,17 @@ def check_sharded_index(index: ShardedMemmapIndex, tokens: list[int], eos_token:
             assert index.contains(list(b)) == (b in bigrams)
             assert index.count(list(b)) == bigrams.count(b)
 
-@given(
-    st.lists(
-        st.integers(0, 2 ** 16 - 1), min_size=2,
-    )
-)
-def test_sharded_index(tokens: list[int]):
+    # Check bigram samples
+    for i in range(len(tokens[:20])):
+        query = tokens[:i]
+        sample = index.sample(query, 2, 1, 1, max(tokens))[0]
+        assert len(sample) == 1 + len(query)
+        assert all(s in tokens for s in sample)
+
+
+def test_sharded_index():
+    tokens = [random.randint(0, 2**16 - 1) for _ in range(10_000)]
+
     eos_token = 0
     mid = len(tokens) // 2
     chunked_tokens = tokens[:mid] + [eos_token] + tokens[mid:] + [eos_token]
