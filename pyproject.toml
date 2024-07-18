@@ -1,6 +1,6 @@
 [project]
 name = "tokengrams"
-version = "0.3.0"
+version = "0.3.1"
 description = "Efficiently computing & storing token n-grams from large corpora "
 authors = [
     { name = "Nora Belrose", email = "nora@eleuther.ai" },
