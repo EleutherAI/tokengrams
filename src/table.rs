@@ -291,13 +291,14 @@ where
 
         let mid = (search_start + search_end) / 2;
         let mut suffix = self.suffix(mid);
+        // The search range may include the query itself, so we need to skip over it.
         if suffix == query {
             if mid + 1 == search_end {
                 return;
             }
             suffix = self.suffix(mid + 1);
         }
-
+        
         let (token_start, token_end) = self.range_boundaries(&suffix[..query.len() + 1], search_start, search_end);
         counts[suffix[query.len()] as usize] = token_end - token_start;
 
@@ -481,9 +482,9 @@ where
             return;
         }
 
-        // Find median of indices ending with at least one additional token
         let mid = (search_start + search_end) / 2;
         let mut suffix = self.suffix(mid);
+        // The search range may include the query itself, so we need to skip over it.
         if suffix == query {
             if mid + 1 == search_end {
                 return;

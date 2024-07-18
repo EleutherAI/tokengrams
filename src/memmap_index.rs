@@ -44,9 +44,10 @@ impl MemmapIndex {
         let table_size = text_mmap.len() * 8;
         table_file.set_len(table_size as u64)?;
 
-        println!("Writing indices to disk...");
+        if verbose {
+            println!("Writing indices to disk...");
+        }
         let start = Instant::now();
-
         let mut table_mmap = MmapSliceMut::<u64>::new(&table_file)?;
         table_mmap
             .iter_mut()
@@ -54,9 +55,11 @@ impl MemmapIndex {
             .for_each(|(i, x)| *x = i as u64);
 
         assert_eq!(table_mmap.len(), text_mmap.len());
-        println!("Time elapsed: {:?}", start.elapsed());
+        if verbose {
+            println!("Time elapsed: {:?}", start.elapsed());
+        }
         let start = Instant::now();
-
+        
         // TODO: Be even smarter about this? We may need to take into account the number of CPUs
         // available as well. These magic numbers were tuned on a server with 48 physical cores.
         // Empirically we start getting stack overflows between 5B and 10B tokens when using the
@@ -79,8 +82,10 @@ impl MemmapIndex {
                     verbose,
                 );
             });
-        println!("Time elapsed: {:?}", start.elapsed());
-
+        if verbose {
+            println!("Time elapsed: {:?}", start.elapsed());
+        }
+        
         // Re-open the table as read-only
         let table_mmap = MmapSlice::new(&table_file)?;
         Ok(MemmapIndex {
