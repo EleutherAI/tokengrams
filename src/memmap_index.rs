@@ -1,11 +1,12 @@
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::fs::{File, OpenOptions};
 use std::time::Instant;
+use std::collections::HashMap;
 
 use crate::mmap_slice::{MmapSlice, MmapSliceMut};
 use crate::par_quicksort::par_sort_unstable_by_key;
 use crate::table::SuffixTable;
+use crate::countable_index::CountableIndex;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
@@ -93,6 +94,10 @@ impl MemmapIndex {
         })
     }
 
+    pub fn positions(&self, query: Vec<u16>) -> Vec<u64> {
+        self.table.positions(&query).to_vec()
+    }
+
     pub fn is_sorted(&self) -> bool {
         self.table.is_sorted()
     }
@@ -105,10 +110,6 @@ impl MemmapIndex {
         self.table.positions(&query).len()
     }
 
-    pub fn positions(&self, query: Vec<u16>) -> Vec<u64> {
-        self.table.positions(&query).to_vec()
-    }
-
     pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
         self.table.count_next(&query, vocab)
     }
@@ -116,42 +117,14 @@ impl MemmapIndex {
     pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
         self.table.batch_count_next(&queries, vocab)
     }
+}
 
-    pub fn sample_unsmoothed(
-        &self,
-        query: Vec<u16>,
-        n: usize,
-        k: usize,
-        num_samples: usize,
-        vocab: Option<u16>,
-    ) -> Result<Vec<Vec<u16>>, PyErr> {
-        self.table
-            .sample_unsmoothed(&query, n, k, num_samples, vocab)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
+impl CountableIndex for MemmapIndex {
+    fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
+        self.table.count_next(&query, vocab)
     }
 
-    pub fn sample_smoothed(
-        &mut self,
-        query: Vec<u16>,
-        n: usize,
-        k: usize,
-        num_samples: usize,
-        vocab: Option<u16>,
-    ) -> Result<Vec<Vec<u16>>, PyErr> {
-        self.table
-            .sample_smoothed(&query, n, k, num_samples, vocab)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
-    }
-
-    pub fn smoothed_probs(&mut self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
-        self.table.get_smoothed_probs(&query, vocab)
-    }
-
-    pub fn batch_smoothed_probs(&mut self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<f64>> {
-        self.table.batch_get_smoothed_probs(&queries, vocab)
-    }
-
-    pub fn estimate_deltas(&mut self, n: usize) {
-        self.table.estimate_deltas(n);
+    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
+        self.table.count_ngrams(n)
     }
 }

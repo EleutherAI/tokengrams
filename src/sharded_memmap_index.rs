@@ -1,43 +1,43 @@
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use std::fs::{File, OpenOptions};
-use std::time::Instant;
-use std::collections::HashSet;
-
-use crate::mmap_slice::{MmapSlice, MmapSliceMut};
-use crate::table::SuffixTable;
+use crate::countable_index::CountableIndex;
 use crate::MemmapIndex;
+use std::collections::HashMap;
+// use crate::sampler::Sampler;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
 pub struct ShardedMemmapIndex {
-    shards: HashSet<SuffixTable<MmapSlice<u16>, MmapSlice<u64>>>,
+    shards: Vec<MemmapIndex>,
+    // sampler: Option<Sampler>
 }
 
 #[pymethods]
 impl ShardedMemmapIndex {
     #[new]
     pub fn new(_py: Python, files: Vec<(String, String)>) -> PyResult<Self> {
-        let mut shards = HashSet::new();
-        for (text_path, table_path) in files {
-            let text_file = File::open(&text_path)?;
-            let table_file = File::open(&table_path)?;
+        let shards: Vec<MemmapIndex> = files.into_iter()
+            .map(|(text_path, table_path)| MemmapIndex::new(_py, text_path, table_path).unwrap())
+            .collect();
 
-            shards.insert(SuffixTable::from_parts(
-                MmapSlice::new(&text_file)?,
-                MmapSlice::new(&table_file)?,
-            ));
-        }
+        Ok(ShardedMemmapIndex { shards })
+    }
 
-        Ok(ShardedIndex { shards })
+    #[new]
+    pub fn add_sampler(_py: Python, files: Vec<(String, String)>) -> PyResult<Self> {
+        let shards: Vec<MemmapIndex> = files.into_iter()
+            .map(|(text_path, table_path)| MemmapIndex::new(_py, text_path, table_path).unwrap())
+            .collect();
+
+        Ok(ShardedMemmapIndex { shards })
     }
 
     #[staticmethod]
     pub fn build(paths: Vec<(String, String)>, verbose: bool) -> PyResult<Self> {
-        for (token_paths, index_paths) in paths {
-            MemmapIndex.build(token_paths, index_paths, verbose);
-        }
-        ShardedMemmapIndex(paths)
+        let shards: Vec<MemmapIndex> = paths.into_iter()
+            .map(|(token_paths, index_paths)| MemmapIndex::build(token_paths, index_paths, verbose).unwrap())
+            .collect();
+
+        Ok(ShardedMemmapIndex { shards })
     }
 
     pub fn is_sorted(&self) -> bool {
@@ -45,49 +45,47 @@ impl ShardedMemmapIndex {
     }
 
     pub fn contains(&self, query: Vec<u16>) -> bool {
-        self.shards.iter().any(|shard| shard.contains(&query))
+        self.shards.iter().any(|shard| shard.contains(query.clone()))
     }
 
     pub fn count(&self, query: Vec<u16>) -> usize {
-        self.shards.iter().map(|shard| shard.count(query)).sum()
-    }
-
-    pub fn positions(&self, query: Vec<u16>) -> Vec<u64> {
-        self.table.positions(&query).to_vec()
+        self.shards.iter().map(|shard| shard.count(query.clone())).sum()
     }
 
     pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
         let counts = self.shards.iter().map(|shard| {
-            shard.count_next(&query, vocab)
+            shard.count_next(query.clone(), vocab)
         }).collect::<Vec<_>>();
         (0..counts[0].len()).map(|i| counts.iter().map(|count| count[i]).sum()).collect()
     }
-}
 
     pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
         let batch_counts = self.shards.iter().map(|shard| {
-            shard.count_next(&query, vocab)
+            shard.batch_count_next(queries.clone(), vocab)
         }).collect::<Vec<_>>();
-        (0..batch_counts[0].len()).map(|i| batch_counts.iter().map(|count| count[i]).sum()).collect()
+
+        (0..queries.len()).map(|i| {
+            (0..batch_counts[0][i].len()).map(|j| {
+                batch_counts.iter().map(|count| count[i][j]).sum()
+            }).collect()
+        }).collect()
+    }
+}
+
+impl CountableIndex for ShardedMemmapIndex {
+    fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
+        let counts = self.shards.iter().map(|shard| {
+            shard.count_next(query.clone(), vocab)
+        }).collect::<Vec<_>>();
+        (0..counts[0].len()).map(|i| counts.iter().map(|count| count[i]).sum()).collect()
     }
 
-    pub fn sample(&self, query: Vec<u16>, n: usize, k: usize) -> Result<Vec<u16>, PyErr> {
-        self.table
-            .sample(&query, n, k)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
+    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
+        self.shards.iter().map(|shard| shard.count_ngrams(n)).fold(HashMap::new(), |mut acc, counts| {
+            for (k, v) in counts {
+                *acc.entry(k).or_insert(0) += v;
+            }
+            acc
+        })
     }
-
-    pub fn batch_sample(
-        &self,
-        query: Vec<u16>,
-        n: usize,
-        k: usize,
-        num_samples: usize,
-    ) -> Result<Vec<Vec<u16>>, PyErr> {
-        self.table
-            .batch_sample(&query, n, k, num_samples)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
-    }
-
-    
 }

@@ -1,14 +1,16 @@
 use bincode::{deserialize, serialize};
-use pyo3::exceptions::PyValueError;
+use std::collections::HashMap;
 use pyo3::prelude::*;
 use std::fs::File;
 use std::io::Read;
 
 use crate::table::SuffixTable;
+use crate::countable_index::CountableIndex;
 use crate::util::transmute_slice;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
 #[pyclass]
+#[derive(Builder)]
 pub struct InMemoryIndex {
     table: SuffixTable,
 }
@@ -59,12 +61,12 @@ impl InMemoryIndex {
         self.table.contains(&query)
     }
 
-    pub fn count(&self, query: Vec<u16>) -> usize {
-        self.table.positions(&query).len()
-    }
-
     pub fn positions(&self, query: Vec<u16>) -> Vec<u64> {
         self.table.positions(&query).to_vec()
+    }
+
+    pub fn count(&self, query: Vec<u16>) -> usize {
+        self.table.positions(&query).len()
     }
 
     pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
@@ -75,48 +77,20 @@ impl InMemoryIndex {
         self.table.batch_count_next(&queries, vocab)
     }
 
-    pub fn sample_unsmoothed(
-        &self,
-        query: Vec<u16>,
-        n: usize,
-        k: usize,
-        num_samples: usize,
-        vocab: Option<u16>
-    ) -> Result<Vec<Vec<u16>>, PyErr> {
-        self.table
-            .sample_unsmoothed(&query, n, k, num_samples, vocab)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
-    }
-
-    pub fn sample_smoothed(
-        &mut self,
-        query: Vec<u16>,
-        n: usize,
-        k: usize,
-        num_samples: usize,
-        vocab: Option<u16>
-    ) -> Result<Vec<Vec<u16>>, PyErr> {
-        self.table
-            .sample_smoothed(&query, n, k, num_samples, vocab)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
-    }
-
-    pub fn smoothed_probs(&mut self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
-        self.table.get_smoothed_probs(&query, vocab)
-    }
-
-    pub fn batch_smoothed_probs(&mut self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<f64>> {
-        self.table.batch_get_smoothed_probs(&queries, vocab)
-    }
-
-    pub fn estimate_deltas(&mut self, n: usize) {
-        self.table.estimate_deltas(n);
-    }
-
     pub fn save(&self, path: String) -> PyResult<()> {
         // TODO: handle errors here
         let bytes = serialize(&self.table).unwrap();
         std::fs::write(&path, bytes)?;
         Ok(())
+    }
+}
+
+impl CountableIndex for InMemoryIndex {
+    fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
+        self.table.count_next(&query, vocab)
+    }
+
+    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
+        self.table.count_ngrams(n)
     }
 }
