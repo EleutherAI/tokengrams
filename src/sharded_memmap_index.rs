@@ -1,29 +1,18 @@
 use pyo3::prelude::*;
-use crate::countable_index::CountableIndex;
+use crate::countable_index::Countable;
 use crate::MemmapIndex;
 use std::collections::HashMap;
-// use crate::sampler::Sampler;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
 pub struct ShardedMemmapIndex {
     shards: Vec<MemmapIndex>,
-    // sampler: Option<Sampler>
 }
 
 #[pymethods]
 impl ShardedMemmapIndex {
     #[new]
     pub fn new(_py: Python, files: Vec<(String, String)>) -> PyResult<Self> {
-        let shards: Vec<MemmapIndex> = files.into_iter()
-            .map(|(text_path, table_path)| MemmapIndex::new(_py, text_path, table_path).unwrap())
-            .collect();
-
-        Ok(ShardedMemmapIndex { shards })
-    }
-
-    #[new]
-    pub fn add_sampler(_py: Python, files: Vec<(String, String)>) -> PyResult<Self> {
         let shards: Vec<MemmapIndex> = files.into_iter()
             .map(|(text_path, table_path)| MemmapIndex::new(_py, text_path, table_path).unwrap())
             .collect();
@@ -72,7 +61,7 @@ impl ShardedMemmapIndex {
     }
 }
 
-impl CountableIndex for ShardedMemmapIndex {
+impl Countable for ShardedMemmapIndex {
     fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
         let counts = self.shards.iter().map(|shard| {
             shard.count_next(query.clone(), vocab)

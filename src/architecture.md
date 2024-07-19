@@ -3,15 +3,16 @@ struct SuffixTable {}
 impl SuffixTable {
     pub fn count_next(&self);
 
-    /// To be deleted - not a natural fit for a suffix table data structure, and depends on count_next
-    /// which is "overridden" in ShardedMemmapIndex. I want to move it into a sampler struct.
+    /// This method is not a natural fit for a suffix table data structure, and uses count_next
+    /// which is "overridden" by ShardedMemmapIndex. I want to move it into a Sampler struct that
+    /// uses a count_next implemented in an Index
     pub fn sample(&self) {
         counts = self.count_next()
         do_sample(counts)
     }
 }
 
-struct MemmapIndex {
+pub struct MemmapIndex {
     table: SuffixTable
 }
 impl MemmapIndex {
@@ -26,13 +27,17 @@ impl MemmapIndex {
     }
 }
 
-struct ShardedInMemoryIndex {
+pub struct ShardedInMemoryIndex {
     shards: Vec<MemmapIndex>
 }
 impl ShardedMemmapIndex {
     pub fn count_next(&self) {
         counts = self.shards.iter().map(|shard| shard.count_next())
         merge_counts(counts)
+    }
+
+    pub fn sample(&self) {
+        // tbd
     }
 }
 

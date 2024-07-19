@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::Read;
 
 use crate::table::SuffixTable;
-use crate::countable_index::CountableIndex;
+use crate::countable_index::Countable;
 use crate::util::transmute_slice;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
@@ -85,7 +85,7 @@ impl InMemoryIndex {
     }
 }
 
-impl CountableIndex for InMemoryIndex {
+impl Countable for InMemoryIndex {
     fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
         self.table.count_next(&query, vocab)
     }

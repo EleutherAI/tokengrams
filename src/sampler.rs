@@ -7,11 +7,14 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{ops::Mul, u64};
+use pyo3::pyclass;
 
 use crate::countable_index::CountableIndex;
+use crate::MemmapIndex;
 
-pub struct Sampler<'a> {
-    index: &'a(dyn CountableIndex),
+#[pyclass]
+pub struct Sampler {
+    index: CountableIndex,
     cache: KneserNeyCache,
 }
 
@@ -21,11 +24,19 @@ struct KneserNeyCache {
     n_delta: HashMap<usize, f64>,
 }
 
-impl<'a> Sampler<'a> {
-    pub fn new(index: &'a (dyn CountableIndex)) -> Self {
+impl Sampler {
+    pub fn memmap_index(index: MemmapIndex) -> Self {
+        Sampler {
+            index: CountableIndex::memmap_index(index),
+            cache: KneserNeyCache {
+                unigram_probs: None,
+                n_delta: HashMap::new(),
+            },
+        }
+    }
+    pub fn new(index: CountableIndex) -> Self {
         Sampler {
             index: index,
-            // count_next: Box::new(count_next),
             cache: KneserNeyCache {
                 unigram_probs: None,
                 n_delta: HashMap::new(),

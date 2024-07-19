@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use crate::mmap_slice::{MmapSlice, MmapSliceMut};
 use crate::par_quicksort::par_sort_unstable_by_key;
 use crate::table::SuffixTable;
-use crate::countable_index::CountableIndex;
+use crate::countable_index::Countable;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
@@ -119,7 +119,7 @@ impl MemmapIndex {
     }
 }
 
-impl CountableIndex for MemmapIndex {
+impl Countable for MemmapIndex {
     fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
         self.table.count_next(&query, vocab)
     }
