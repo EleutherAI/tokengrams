@@ -9,14 +9,14 @@ use std::collections::HashMap;
 use std::{ops::Mul, u64};
 use pyo3::pyclass;
 
-use crate::countable::{CountableIndex, Countable};
+use crate::countable::Countable;
 use crate::{InMemoryIndex, MemmapIndex, ShardedMemmapIndex, SuffixTable};
 
 pub enum SampleableIndex {
     InMemory(InMemoryIndex),
     Memmap(MemmapIndex),
     ShardedMemmap(ShardedMemmapIndex),
-    Countable(SuffixTable)
+    SuffixTable(SuffixTable)
 }
 impl Countable for SampleableIndex {
     fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
@@ -24,7 +24,7 @@ impl Countable for SampleableIndex {
             SampleableIndex::InMemory(a) => a.count_next_slice(query, vocab),
             SampleableIndex::Memmap(b) => b.count_next_slice(query, vocab),
             SampleableIndex::ShardedMemmap(c) => c.count_next_slice(query, vocab),
-            SampleableIndex::Countable(c) => c.count_next_slice(query, vocab),
+            SampleableIndex::SuffixTable(c) => c.count_next_slice(query, vocab),
         } 
     }
 
@@ -33,7 +33,7 @@ impl Countable for SampleableIndex {
             SampleableIndex::InMemory(a) => a.count_ngrams(n),
             SampleableIndex::Memmap(b) => b.count_ngrams(n),
             SampleableIndex::ShardedMemmap(c) => c.count_ngrams(n),
-            SampleableIndex::Countable(c) => c.count_ngrams(n),
+            SampleableIndex::SuffixTable(c) => c.count_ngrams(n),
         }
     }
 }
@@ -43,10 +43,11 @@ impl Countable for SampleableIndex {
 #[builder(pattern = "owned")]
 pub struct Sampler {
     index: SampleableIndex,
+    #[builder(default)]
     cache: KneserNeyCache,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, Default)]
 struct KneserNeyCache {
     unigram_probs: Option<Vec<f64>>,
     n_delta: HashMap<usize, f64>,
@@ -91,7 +92,7 @@ impl Sampler {
     }
     pub fn suffix_table(suffix_table: SuffixTable) -> Self {
         Sampler {
-            index: SampleableIndex::Countable(suffix_table),
+            index: SampleableIndex::SuffixTable(suffix_table),
             cache: KneserNeyCache {
                 unigram_probs: None,
                 n_delta: HashMap::new(),
