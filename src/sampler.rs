@@ -12,28 +12,28 @@ use pyo3::pyclass;
 use crate::countable::Countable;
 use crate::{InMemoryIndex, MemmapIndex, ShardedMemmapIndex, SuffixTable};
 
-pub enum SampleableIndex {
-    InMemory(InMemoryIndex),
-    Memmap(MemmapIndex),
-    ShardedMemmap(ShardedMemmapIndex),
+pub enum Sampleable {
+    InMemoryIndex(InMemoryIndex),
+    MemmapIndex(MemmapIndex),
+    ShardedMemmapIndex(ShardedMemmapIndex),
     SuffixTable(SuffixTable)
 }
-impl Countable for SampleableIndex {
+impl Countable for Sampleable {
     fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         match self {
-            SampleableIndex::InMemory(a) => a.count_next_slice(query, vocab),
-            SampleableIndex::Memmap(b) => b.count_next_slice(query, vocab),
-            SampleableIndex::ShardedMemmap(c) => c.count_next_slice(query, vocab),
-            SampleableIndex::SuffixTable(c) => c.count_next_slice(query, vocab),
+            Sampleable::InMemoryIndex(a) => a.count_next_slice(query, vocab),
+            Sampleable::MemmapIndex(b) => b.count_next_slice(query, vocab),
+            Sampleable::ShardedMemmapIndex(c) => c.count_next_slice(query, vocab),
+            Sampleable::SuffixTable(c) => c.count_next_slice(query, vocab),
         } 
     }
 
     fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
         match self {
-            SampleableIndex::InMemory(a) => a.count_ngrams(n),
-            SampleableIndex::Memmap(b) => b.count_ngrams(n),
-            SampleableIndex::ShardedMemmap(c) => c.count_ngrams(n),
-            SampleableIndex::SuffixTable(c) => c.count_ngrams(n),
+            Sampleable::InMemoryIndex(a) => a.count_ngrams(n),
+            Sampleable::MemmapIndex(b) => b.count_ngrams(n),
+            Sampleable::ShardedMemmapIndex(c) => c.count_ngrams(n),
+            Sampleable::SuffixTable(c) => c.count_ngrams(n),
         }
     }
 }
@@ -42,7 +42,7 @@ impl Countable for SampleableIndex {
 #[derive(Builder)]
 #[builder(pattern = "owned")]
 pub struct Sampler {
-    index: SampleableIndex,
+    index: Sampleable,
     #[builder(default)]
     cache: KneserNeyCache,
 }
@@ -54,7 +54,7 @@ struct KneserNeyCache {
 }
 
 impl Sampler {
-    pub fn new(index: SampleableIndex) -> Self {
+    pub fn new(index: Sampleable) -> Self {
         Sampler {
             index: index,
             cache: KneserNeyCache {
@@ -65,7 +65,7 @@ impl Sampler {
     }
     pub fn memmap_index(index: MemmapIndex) -> Self {
         Sampler {
-            index: SampleableIndex::Memmap(index),
+            index: Sampleable::MemmapIndex(index),
             cache: KneserNeyCache {
                 unigram_probs: None,
                 n_delta: HashMap::new(),
@@ -74,7 +74,7 @@ impl Sampler {
     }
     pub fn in_memory_index(index: InMemoryIndex) -> Self {
         Sampler {
-            index: SampleableIndex::InMemory(index),
+            index: Sampleable::InMemoryIndex(index),
             cache: KneserNeyCache {
                 unigram_probs: None,
                 n_delta: HashMap::new(),
@@ -83,7 +83,7 @@ impl Sampler {
     }
     pub fn sharded_memmap_index(index: ShardedMemmapIndex) -> Self {
         Sampler {
-            index: SampleableIndex::ShardedMemmap(index),
+            index: Sampleable::ShardedMemmapIndex(index),
             cache: KneserNeyCache {
                 unigram_probs: None,
                 n_delta: HashMap::new(),
@@ -92,7 +92,7 @@ impl Sampler {
     }
     pub fn suffix_table(suffix_table: SuffixTable) -> Self {
         Sampler {
-            index: SampleableIndex::SuffixTable(suffix_table),
+            index: Sampleable::SuffixTable(suffix_table),
             cache: KneserNeyCache {
                 unigram_probs: None,
                 n_delta: HashMap::new(),
@@ -310,56 +310,65 @@ impl Sampler {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use utf16_literal::utf16;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use utf16_literal::utf16;
 
-//     fn sais(text: &str) -> SuffixTable {
-//         SuffixTable::new(text.encode_utf16().collect::<Vec<_>>(), false)
-//     }
-    // #[test]
-    // fn unigram_probs_exists() {
-    //     let mut sa = sais("aaab");
-    //     sa.compute_smoothed_unigram_probs(Some(100));
-    //     let sa = sa;
+    fn sais(text: &str) -> SuffixTable {
+        SuffixTable::new(text.encode_utf16().collect::<Vec<_>>(), false)
+    }
 
-    //     let unigram_probs = sa.get_cached_smoothed_unigram_probs();
-    //     let residual = (unigram_probs.iter().sum::<f64>() - 1.0).abs();
-    //     assert!(residual < 1e-4);
+    #[test]
+    fn unigram_probs_exists() {
+        let mut sampler = SamplerBuilder::default()
+            .index(Sampleable::SuffixTable(sais("aaab")))
+            .build()
+            .unwrap();
+        sampler.compute_smoothed_unigram_probs(Some(100));
 
-    //     // Additive smoothing results in non-zero probability on unused vocabulary
-    //     assert!(unigram_probs[0] > 0.0);
-    // }
-//     #[test]
-//     fn compute_ngram_counts_exists() {
-//         let sa = sais("aaabbbaaa");
-//         let count_map = sa.count_ngrams(3);
+        let unigram_probs = sampler.get_cached_smoothed_unigram_probs();
+        let residual = (unigram_probs.iter().sum::<f64>() - 1.0).abs();
+        assert!(residual < 1e-4);
 
-//         // Every 3-gram except aaa occurs once
-//         let mut expected_map = std::collections::HashMap::new();
-//         expected_map.insert(1, 5);
-//         expected_map.insert(2, 1);
+        // Additive smoothing results in non-zero probability on unused vocabulary
+        assert!(unigram_probs[0] > 0.0);
+    }
+    #[test]
+    fn compute_ngram_counts_exists() {
+        let sa = sais("aaabbbaaa");
+        let count_map = sa.count_ngrams(3);
 
-//         assert_eq!(count_map, expected_map);
-//     }
+        // Every 3-gram except aaa occurs once
+        let mut expected_map = std::collections::HashMap::new();
+        expected_map.insert(1, 5);
+        expected_map.insert(2, 1);
 
-//     #[test]
-//     fn sample_query_exists() {
-//         let sa = sais("aaa");
-//         let a = utf16!("a");
-//         let tokens = sa.sample(a, 3, 10, None).unwrap();
+        assert_eq!(count_map, expected_map);
+    }
 
-//         assert_eq!(*tokens.last().unwrap(), a[0]);
-//     }
+    #[test]
+    fn sample_query_exists() {
+        let sampler = SamplerBuilder::default()
+            .index(Sampleable::SuffixTable(sais("aaa")))
+            .build()
+            .unwrap();
+        let a = utf16!("a");
+        let tokens = sampler.sample(a, 3, 10, None).unwrap();
 
-//     #[test]
-//     fn sample_empty_query_exists() {
-//         let sa = sais("aaa");
-//         let a = utf16!("a");
-//         let empty_query = utf16!("");
-//         let tokens = sa.sample(empty_query, 3, 10, None).unwrap();
+        assert_eq!(*tokens.last().unwrap(), a[0]);
+    }
 
-//         assert_eq!(*tokens.last().unwrap(), a[0]);
-//     }
-// }
+    #[test]
+    fn sample_empty_query_exists() {
+        let sampler = SamplerBuilder::default()
+            .index(Sampleable::SuffixTable(sais("aaa")))
+            .build()
+            .unwrap();
+        let a = utf16!("a");
+        let empty_query = utf16!("");
+        let tokens = sampler.sample(empty_query, 3, 10, None).unwrap();
+
+        assert_eq!(*tokens.last().unwrap(), a[0]);
+    }
+}

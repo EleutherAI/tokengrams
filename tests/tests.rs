@@ -2,7 +2,7 @@ extern crate quickcheck;
 extern crate utf16_literal;
 
 use quickcheck::{QuickCheck, Testable};
-use tokengrams::{SuffixTable, Sampler, SampleableIndex, SamplerBuilder};
+use tokengrams::{SuffixTable, Sampler, Sampleable, SamplerBuilder};
 use utf16_literal::utf16;
 
 fn sais(text: &str) -> SuffixTable {
@@ -153,7 +153,7 @@ fn sample_unsmoothed_exists() {
     let sa = sais("aaa");
     let a = utf16!("a");
 
-    let sampler = Sampler::new(SampleableIndex::SuffixTable(sa));
+    let sampler = Sampler::new(Sampleable::SuffixTable(sa));
     let seqs = sampler.sample_unsmoothed(a, 3, 10, 20, None).unwrap();
 
     assert_eq!(*seqs[0].last().unwrap(), a[0]);
@@ -163,7 +163,7 @@ fn sample_unsmoothed_exists() {
 #[test]
 fn sample_unsmoothed_empty_query_exists() {
     let sampler = SamplerBuilder::default()
-        .index(SampleableIndex::SuffixTable(sais("aaa")))
+        .index(Sampleable::SuffixTable(sais("aaa")))
         .build()
         .unwrap();
 
@@ -176,7 +176,7 @@ fn sample_unsmoothed_empty_query_exists() {
 #[test]
 fn sample_smoothed_exists() {
     let mut sampler = SamplerBuilder::default()
-        .index(SampleableIndex::SuffixTable(sais("aabbccabccba")))
+        .index(Sampleable::SuffixTable(sais("aabbccabccba")))
         .build()
         .unwrap();
     let tokens = &sampler.sample_smoothed(utf16!("a"), 3, 10, 1, None).unwrap()[0];
@@ -187,7 +187,7 @@ fn sample_smoothed_exists() {
 #[test]
 fn sample_smoothed_unigrams_exists() {
     let mut sampler = SamplerBuilder::default()
-        .index(SampleableIndex::SuffixTable(sais("aabbccabccba")))
+        .index(Sampleable::SuffixTable(sais("aabbccabccba")))
         .build()
         .unwrap();
     let tokens = &sampler.sample_smoothed(utf16!("a"), 1, 10, 10, None).unwrap()[0];
@@ -198,8 +198,8 @@ fn sample_smoothed_unigrams_exists() {
 #[test]
 fn prop_sample() {
     fn prop(s: String) -> bool {
-        let mut sampler = SamplerBuilder::default()
-            .index(SampleableIndex::SuffixTable(sais(&s)))
+        let sampler = SamplerBuilder::default()
+            .index(Sampleable::SuffixTable(sais(&s)))
             .build()
             .unwrap();
 
@@ -223,7 +223,7 @@ fn prop_sample() {
 fn smoothed_probs_exists() {
     let sa = sais("aaaaaaaabc");
     let mut sampler = SamplerBuilder::default()
-            .index(SampleableIndex::SuffixTable(sa.clone()))
+            .index(Sampleable::SuffixTable(sa.clone()))
             .build()
             .unwrap();
 
@@ -252,7 +252,7 @@ fn smoothed_probs_exists() {
 #[test]
 fn smoothed_probs_empty_query_exists() {
     let mut sampler = SamplerBuilder::default()
-            .index(SampleableIndex::SuffixTable(sais("aaa")))
+            .index(Sampleable::SuffixTable(sais("aaa")))
             .build()
             .unwrap();
 
