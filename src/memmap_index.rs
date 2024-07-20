@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use crate::mmap_slice::{MmapSlice, MmapSliceMut};
 use crate::par_quicksort::par_sort_unstable_by_key;
+use crate::countable::Countable;
 use crate::table::SuffixTable;
-use crate::countable_index::Countable;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
@@ -30,6 +30,7 @@ impl MemmapIndex {
     }
 
     #[staticmethod]
+    #[pyo3(signature = (text_path, table_path, verbose=false))]
     pub fn build(text_path: String, table_path: String, verbose: bool) -> PyResult<Self> {
         // Memory map the text as read-only
         let text_mmap = MmapSlice::new(&File::open(&text_path)?)?;
@@ -110,18 +111,20 @@ impl MemmapIndex {
         self.table.positions(&query).len()
     }
 
+    #[pyo3(signature = (query, vocab=None))]
     pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
         self.table.count_next(&query, vocab)
     }
 
+    #[pyo3(signature = (queries, vocab=None))]
     pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
         self.table.batch_count_next(&queries, vocab)
     }
 }
 
 impl Countable for MemmapIndex {
-    fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
-        self.table.count_next(&query, vocab)
+    fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+        self.table.count_next(query, vocab)
     }
 
     fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {

@@ -9,12 +9,40 @@ use std::collections::HashMap;
 use std::{ops::Mul, u64};
 use pyo3::pyclass;
 
-use crate::countable_index::CountableIndex;
-use crate::MemmapIndex;
+use crate::countable::{CountableIndex, Countable};
+use crate::{InMemoryIndex, MemmapIndex, ShardedMemmapIndex, SuffixTable};
+
+pub enum SampleableIndex {
+    InMemory(InMemoryIndex),
+    Memmap(MemmapIndex),
+    ShardedMemmap(ShardedMemmapIndex),
+    Countable(SuffixTable)
+}
+impl Countable for SampleableIndex {
+    fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+        match self {
+            SampleableIndex::InMemory(a) => a.count_next_slice(query, vocab),
+            SampleableIndex::Memmap(b) => b.count_next_slice(query, vocab),
+            SampleableIndex::ShardedMemmap(c) => c.count_next_slice(query, vocab),
+            SampleableIndex::Countable(c) => c.count_next_slice(query, vocab),
+        } 
+    }
+
+    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
+        match self {
+            SampleableIndex::InMemory(a) => a.count_ngrams(n),
+            SampleableIndex::Memmap(b) => b.count_ngrams(n),
+            SampleableIndex::ShardedMemmap(c) => c.count_ngrams(n),
+            SampleableIndex::Countable(c) => c.count_ngrams(n),
+        }
+    }
+}
 
 #[pyclass]
+#[derive(Builder)]
+#[builder(pattern = "owned")]
 pub struct Sampler {
-    index: CountableIndex,
+    index: SampleableIndex,
     cache: KneserNeyCache,
 }
 
@@ -25,18 +53,45 @@ struct KneserNeyCache {
 }
 
 impl Sampler {
-    pub fn memmap_index(index: MemmapIndex) -> Self {
+    pub fn new(index: SampleableIndex) -> Self {
         Sampler {
-            index: CountableIndex::memmap_index(index),
+            index: index,
             cache: KneserNeyCache {
                 unigram_probs: None,
                 n_delta: HashMap::new(),
             },
         }
     }
-    pub fn new(index: CountableIndex) -> Self {
+    pub fn memmap_index(index: MemmapIndex) -> Self {
         Sampler {
-            index: index,
+            index: SampleableIndex::Memmap(index),
+            cache: KneserNeyCache {
+                unigram_probs: None,
+                n_delta: HashMap::new(),
+            },
+        }
+    }
+    pub fn in_memory_index(index: InMemoryIndex) -> Self {
+        Sampler {
+            index: SampleableIndex::InMemory(index),
+            cache: KneserNeyCache {
+                unigram_probs: None,
+                n_delta: HashMap::new(),
+            },
+        }
+    }
+    pub fn sharded_memmap_index(index: ShardedMemmapIndex) -> Self {
+        Sampler {
+            index: SampleableIndex::ShardedMemmap(index),
+            cache: KneserNeyCache {
+                unigram_probs: None,
+                n_delta: HashMap::new(),
+            },
+        }
+    }
+    pub fn suffix_table(suffix_table: SuffixTable) -> Self {
+        Sampler {
+            index: SampleableIndex::Countable(suffix_table),
             cache: KneserNeyCache {
                 unigram_probs: None,
                 n_delta: HashMap::new(),
@@ -69,7 +124,7 @@ impl Sampler {
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
 
-            let counts = self.index.count_next(prev.to_vec(), vocab);
+            let counts = self.index.count_next_slice(prev, vocab);
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
 
@@ -128,7 +183,7 @@ impl Sampler {
             self.smoothed_probs(&query[1..], vocab)
         };
         
-        let counts = self.index.count_next(query.to_vec(), vocab);
+        let counts = self.index.count_next_slice(query, vocab);
         let suffix_count_recip = {
             let suffix_count: usize = counts.iter().sum();
             if suffix_count == 0 {
@@ -236,7 +291,7 @@ impl Sampler {
         };
 
         // Count the number of unique bigrams that end with each token
-        let counts = self.index.count_next(Vec::new(), vocab);
+        let counts = self.index.count_next_slice(&[], vocab);
         let total_count: usize = counts.iter().sum();
         let adjusted_total_count = total_count as f64 + eps.mul(vocab_size as f64);
         let unigram_probs: Vec<f64> = counts

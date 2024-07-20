@@ -1,9 +1,10 @@
 pub mod mmap_slice;
-pub use sampler::Sampler;
+pub use sampler::{Sampler, SamplerBuilder, SampleableIndex};
 pub use in_memory_index::InMemoryIndex;
 pub use memmap_index::MemmapIndex;
 pub use sharded_memmap_index::ShardedMemmapIndex;
 pub use table::SuffixTable;
+pub use countable::CountableIndex;
 
 /// Python bindings
 use pyo3::prelude::*;
@@ -11,7 +12,7 @@ use pyo3::prelude::*;
 mod sharded_memmap_index;
 mod in_memory_index;
 mod memmap_index;
-mod countable_index;
+mod countable;
 mod sampler;
 mod table;
 mod par_quicksort;

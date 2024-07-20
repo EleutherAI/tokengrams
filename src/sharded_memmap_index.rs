@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use crate::countable_index::Countable;
+use crate::countable::Countable;
 use crate::MemmapIndex;
 use std::collections::HashMap;
 
@@ -21,6 +21,7 @@ impl ShardedMemmapIndex {
     }
 
     #[staticmethod]
+    #[pyo3(signature = (paths, verbose=false))]
     pub fn build(paths: Vec<(String, String)>, verbose: bool) -> PyResult<Self> {
         let shards: Vec<MemmapIndex> = paths.into_iter()
             .map(|(token_paths, index_paths)| MemmapIndex::build(token_paths, index_paths, verbose).unwrap())
@@ -41,13 +42,15 @@ impl ShardedMemmapIndex {
         self.shards.iter().map(|shard| shard.count(query.clone())).sum()
     }
 
+    #[pyo3(signature = (query, vocab=None))]
     pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
         let counts = self.shards.iter().map(|shard| {
-            shard.count_next(query.clone(), vocab)
+            shard.count_next_slice(&query, vocab)
         }).collect::<Vec<_>>();
         (0..counts[0].len()).map(|i| counts.iter().map(|count| count[i]).sum()).collect()
     }
 
+    #[pyo3(signature = (queries, vocab=None))]
     pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
         let batch_counts = self.shards.iter().map(|shard| {
             shard.batch_count_next(queries.clone(), vocab)
@@ -62,9 +65,9 @@ impl ShardedMemmapIndex {
 }
 
 impl Countable for ShardedMemmapIndex {
-    fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
+    fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         let counts = self.shards.iter().map(|shard| {
-            shard.count_next(query.clone(), vocab)
+            shard.count_next_slice(query, vocab)
         }).collect::<Vec<_>>();
         (0..counts[0].len()).map(|i| counts.iter().map(|count| count[i]).sum()).collect()
     }

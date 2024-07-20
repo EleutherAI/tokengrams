@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::Read;
 
 use crate::table::SuffixTable;
-use crate::countable_index::Countable;
+use crate::countable::Countable;
 use crate::util::transmute_slice;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
@@ -18,6 +18,7 @@ pub struct InMemoryIndex {
 #[pymethods]
 impl InMemoryIndex {
     #[new]
+    #[pyo3(signature = (tokens, verbose=false))]
     pub fn new(_py: Python, tokens: Vec<u16>, verbose: bool) -> Self {
         InMemoryIndex {
             table: SuffixTable::new(tokens, verbose),
@@ -32,6 +33,7 @@ impl InMemoryIndex {
     }
 
     #[staticmethod]
+    #[pyo3(signature = (path, verbose=false, token_limit=None))]
     pub fn from_token_file(
         path: String,
         verbose: bool,
@@ -69,10 +71,12 @@ impl InMemoryIndex {
         self.table.positions(&query).len()
     }
 
+    #[pyo3(signature = (query, vocab=None))]
     pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
         self.table.count_next(&query, vocab)
     }
 
+    #[pyo3(signature = (queries, vocab=None))]
     pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
         self.table.batch_count_next(&queries, vocab)
     }
@@ -86,7 +90,7 @@ impl InMemoryIndex {
 }
 
 impl Countable for InMemoryIndex {
-    fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
+    fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         self.table.count_next(&query, vocab)
     }
 
