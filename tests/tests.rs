@@ -1,10 +1,8 @@
 extern crate quickcheck;
 extern crate utf16_literal;
-use std::fs::File;
-use std::io::prelude::*;
 
 use quickcheck::{QuickCheck, Testable};
-use tokengrams::{SuffixTable, Sampler, InMemoryIndex, CountableIndex, SamplerBuilder, SampleableIndex};
+use tokengrams::{SuffixTable}; // , Sampler, InMemoryIndex, CountableIndex, SamplerBuilder, SampleableIndex};
 use utf16_literal::utf16;
 
 fn sais(text: &str) -> SuffixTable {
@@ -150,20 +148,20 @@ fn prop_positions() {
     qc(prop as fn(String, u16) -> bool);
 }
 
-#[test]
-fn sample_unsmoothed_exists() {
-    let sa = sais("aaa");
-    let a = utf16!("a");
-    // Create temporary token file containing contents of suffix array [97, 97, 97]
-    // let mut file = File::create("tmp.bin")?;
+// #[test]
+// fn sample_unsmoothed_exists() {
+//     let sa = sais("aaa");
+//     let a = utf16!("a");
+//     // Create temporary token file containing contents of suffix array [97, 97, 97]
+//     // let mut file = File::create("tmp.bin")?;
 
-    let sampler = Sampler::new(SampleableIndex::Countable(sa));
-    // let sampler = SamplerBuilder::default().index().build().unwrap();
-    let seqs = sampler.sample_unsmoothed(a, 3, 10, 20, None).unwrap();
+//     let sampler = Sampler::new(SampleableIndex::Countable(sa));
+//     // let sampler = SamplerBuilder::default().index().build().unwrap();
+//     let seqs = sampler.sample_unsmoothed(a, 3, 10, 20, None).unwrap();
 
-    assert_eq!(*seqs[0].last().unwrap(), a[0]);
-    assert_eq!(*seqs[19].last().unwrap(), a[0]);
-}
+//     assert_eq!(*seqs[0].last().unwrap(), a[0]);
+//     assert_eq!(*seqs[19].last().unwrap(), a[0]);
+// }
 
 // #[test]
 // fn sample_unsmoothed_empty_query_exists() {

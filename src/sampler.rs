@@ -1,5 +1,7 @@
 extern crate utf16_literal;
 
+use pyo3::prelude::*;
+use pyo3::{Py, Python};
 use anyhow::Result;
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::thread_rng;
@@ -7,42 +9,12 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{ops::Mul, u64};
-use pyo3::pyclass;
 
-use crate::countable::{CountableIndex, Countable};
-use crate::{InMemoryIndex, MemmapIndex, ShardedMemmapIndex, SuffixTable};
-
-pub enum SampleableIndex {
-    InMemory(InMemoryIndex),
-    Memmap(MemmapIndex),
-    ShardedMemmap(ShardedMemmapIndex),
-    Countable(SuffixTable)
-}
-impl Countable for SampleableIndex {
-    fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
-        match self {
-            SampleableIndex::InMemory(a) => a.count_next_slice(query, vocab),
-            SampleableIndex::Memmap(b) => b.count_next_slice(query, vocab),
-            SampleableIndex::ShardedMemmap(c) => c.count_next_slice(query, vocab),
-            SampleableIndex::Countable(c) => c.count_next_slice(query, vocab),
-        } 
-    }
-
-    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
-        match self {
-            SampleableIndex::InMemory(a) => a.count_ngrams(n),
-            SampleableIndex::Memmap(b) => b.count_ngrams(n),
-            SampleableIndex::ShardedMemmap(c) => c.count_ngrams(n),
-            SampleableIndex::Countable(c) => c.count_ngrams(n),
-        }
-    }
-}
+use crate::countable::CountableIndex;
 
 #[pyclass]
-#[derive(Builder)]
-#[builder(pattern = "owned")]
 pub struct Sampler {
-    index: SampleableIndex,
+    index: Py<CountableIndex>,
     cache: KneserNeyCache,
 }
 
@@ -52,8 +24,10 @@ struct KneserNeyCache {
     n_delta: HashMap<usize, f64>,
 }
 
+#[pymethods]
 impl Sampler {
-    pub fn new(index: SampleableIndex) -> Self {
+    #[new]
+    pub fn new_py(_py: Python, index: Py<CountableIndex>) -> Self {
         Sampler {
             index: index,
             cache: KneserNeyCache {
@@ -62,47 +36,57 @@ impl Sampler {
             },
         }
     }
-    pub fn memmap_index(index: MemmapIndex) -> Self {
-        Sampler {
-            index: SampleableIndex::Memmap(index),
-            cache: KneserNeyCache {
-                unigram_probs: None,
-                n_delta: HashMap::new(),
-            },
-        }
-    }
-    pub fn in_memory_index(index: InMemoryIndex) -> Self {
-        Sampler {
-            index: SampleableIndex::InMemory(index),
-            cache: KneserNeyCache {
-                unigram_probs: None,
-                n_delta: HashMap::new(),
-            },
-        }
-    }
-    pub fn sharded_memmap_index(index: ShardedMemmapIndex) -> Self {
-        Sampler {
-            index: SampleableIndex::ShardedMemmap(index),
-            cache: KneserNeyCache {
-                unigram_probs: None,
-                n_delta: HashMap::new(),
-            },
-        }
-    }
-    pub fn suffix_table(suffix_table: SuffixTable) -> Self {
-        Sampler {
-            index: SampleableIndex::Countable(suffix_table),
-            cache: KneserNeyCache {
-                unigram_probs: None,
-                n_delta: HashMap::new(),
-            },
-        }
-    }
+
+    // pub fn sampleable_index(index: SampleableIndex) -> Self {
+    //     Sampler {
+    //         index: index,
+    //         cache: KneserNeyCache {
+    //             unigram_probs: None,
+    //             n_delta: HashMap::new(),
+    //         },
+    //     }
+    // }
+    // pub fn memmap_index(index: MemmapIndex) -> Self {
+    //     Sampler {
+    //         index: SampleableIndex::Memmap(index),
+    //         cache: KneserNeyCache {
+    //             unigram_probs: None,
+    //             n_delta: HashMap::new(),
+    //         },
+    //     }
+    // }
+    // pub fn in_memory_index(index: InMemoryIndex) -> Self {
+    //     Sampler {
+    //         index: SampleableIndex::InMemory(index),
+    //         cache: KneserNeyCache {
+    //             unigram_probs: None,
+    //             n_delta: HashMap::new(),
+    //         },
+    //     }
+    // }
+    // pub fn sharded_memmap_index(index: ShardedMemmapIndex) -> Self {
+    //     Sampler {
+    //         index: SampleableIndex::ShardedMemmap(index),
+    //         cache: KneserNeyCache {
+    //             unigram_probs: None,
+    //             n_delta: HashMap::new(),
+    //         },
+    //     }
+    // }
+    // pub fn suffix_table(suffix_table: SuffixTable) -> Self {
+    //     Sampler {
+    //         index: SampleableIndex::Countable(suffix_table),
+    //         cache: KneserNeyCache {
+    //             unigram_probs: None,
+    //             n_delta: HashMap::new(),
+    //         },
+    //     }
+    // }
 
     /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
     pub fn sample_unsmoothed(
         &self,
-        query: &[u16],
+        query: Vec<u16>,
         n: usize,
         k: usize,
         num_samples: usize,
@@ -110,12 +94,12 @@ impl Sampler {
     ) -> Result<Vec<Vec<u16>>> {
         (0..num_samples)
             .into_par_iter()
-            .map(|_| self.sample(query, n, k, vocab))
+            .map(|_| self.sample(query.clone(), n, k, vocab))
             .collect()
     }
 
     //// Autoregressively sample a sequence of k characters from an unsmoothed n-gram model."""
-    fn sample(&self, query: &[u16], n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>> {
+    fn sample(&self, query: Vec<u16>, n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>> {
         let mut rng = thread_rng();
         let mut sequence = Vec::from(query);
 
@@ -123,8 +107,10 @@ impl Sampler {
             // look at the previous (n - 1) characters to predict the n-gram completion
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
-
-            let counts = self.index.count_next_slice(prev, vocab);
+            
+            let counts = Python::with_gil(
+                |py| self.index.as_ref(py).borrow().count_next_slice(prev, vocab)
+            );
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index = dist.sample(&mut rng);
 
@@ -136,7 +122,7 @@ impl Sampler {
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    pub fn get_smoothed_probs(&mut self, query: &[u16], vocab: Option<u16>) -> Vec<f64> {
+    pub fn get_smoothed_probs(&mut self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
         self.estimate_deltas(1);
         self.compute_smoothed_unigram_probs(vocab);
         self.smoothed_probs(query, vocab)
@@ -144,7 +130,7 @@ impl Sampler {
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    pub fn batch_get_smoothed_probs(&mut self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<f64>> {
+    pub fn batch_get_smoothed_probs(&mut self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<f64>> {
         self.estimate_deltas(1);
         self.compute_smoothed_unigram_probs(vocab);
 
@@ -157,7 +143,7 @@ impl Sampler {
     /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
     pub fn sample_smoothed(
         &mut self,
-        query: &[u16],
+        query: Vec<u16>,
         n: usize,
         k: usize,
         num_samples: usize,
@@ -168,7 +154,7 @@ impl Sampler {
 
         (0..num_samples)
             .into_par_iter()
-            .map(|_| self.kn_sample(query, n, k, vocab))
+            .map(|_| self.kn_sample(query.clone(), n, k, vocab))
             .collect()
     }
         
@@ -176,14 +162,14 @@ impl Sampler {
     /// continuation using absolute discounting as described in
     /// "On structuring probabilistic dependences in stochastic language modelling", page 25,
     /// doi:10.1006/csla.1994.1001
-    fn smoothed_probs(&self, query: &[u16], vocab: Option<u16>) -> Vec<f64> {
+    fn smoothed_probs(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
         let p_continuations = if query.is_empty() {
             self.get_cached_smoothed_unigram_probs().to_vec()
         } else {
-            self.smoothed_probs(&query[1..], vocab)
+            self.smoothed_probs(query[1..].to_vec(), vocab)
         };
         
-        let counts = self.index.count_next_slice(query, vocab);
+        let counts = Python::with_gil(|py| self.index.as_ref(py).borrow().count_next_slice(&query, vocab));
         let suffix_count_recip = {
             let suffix_count: usize = counts.iter().sum();
             if suffix_count == 0 {
@@ -192,7 +178,7 @@ impl Sampler {
             1.0 / suffix_count as f64
         };
 
-        let (gt_zero_count, eq_one_count) = self.get_occurrence_counts(&counts);
+        let (gt_zero_count, eq_one_count) = self.get_occurrence_counts(counts.clone());
         let used_suffix_count = gt_zero_count as f64;
         let used_once_suffix_count = eq_one_count as f64;
 
@@ -220,7 +206,7 @@ impl Sampler {
     }
 
     /// Returns tuple of the number of elements that are greater than 0 and the number of elements that equal 1.
-    fn get_occurrence_counts(&self, slice: &[usize]) -> (usize, usize) {
+    fn get_occurrence_counts(&self, slice: Vec<usize>) -> (usize, usize) {
         slice
             .iter()
             .fold((0, 0), |(gt_zero_count, eq_one_count), &c| {
@@ -231,14 +217,14 @@ impl Sampler {
     }
 
     /// Autoregressively sample k characters from a Kneser-Ney smoothed n-gram model.
-    fn kn_sample(&self, query: &[u16], n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>> {
+    fn kn_sample(&self, query: Vec<u16>, n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>> {
         let mut rng = thread_rng();
         let mut sequence = Vec::from(query);
 
         for _ in 0..k {
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
-            let probs = self.smoothed_probs(prev, vocab);
+            let probs = self.smoothed_probs(prev.to_vec(), vocab);
             let dist = WeightedIndex::new(&probs)?;
             let sampled_index = dist.sample(&mut rng);
 
@@ -258,7 +244,9 @@ impl Sampler {
                 continue;
             }
             
-            let count_map = self.index.count_ngrams(i);
+            let count_map = Python::with_gil(
+                |py| self.index.as_ref(py).borrow().count_ngrams(i)
+            );
             let n1 = *count_map.get(&1).unwrap_or(&0) as f64;
             let n2 = *count_map.get(&2).unwrap_or(&0) as f64;
 
@@ -291,7 +279,10 @@ impl Sampler {
         };
 
         // Count the number of unique bigrams that end with each token
-        let counts = self.index.count_next_slice(&[], vocab);
+        let counts = Python::with_gil(
+            |py| self.index.as_ref(py).borrow().count_next_slice(&[], vocab)
+        );
+
         let total_count: usize = counts.iter().sum();
         let adjusted_total_count = total_count as f64 + eps.mul(vocab_size as f64);
         let unigram_probs: Vec<f64> = counts
@@ -304,8 +295,8 @@ impl Sampler {
         self.cache.unigram_probs = Some(unigram_probs);
     }
 
-    fn get_cached_smoothed_unigram_probs(&self) -> &Vec<f64> {
-        self.cache.unigram_probs.as_ref().unwrap()
+    fn get_cached_smoothed_unigram_probs(&self) -> Vec<f64> {
+        self.cache.unigram_probs.as_ref().unwrap().clone()
     }
 }
 
@@ -317,19 +308,20 @@ impl Sampler {
 //     fn sais(text: &str) -> SuffixTable {
 //         SuffixTable::new(text.encode_utf16().collect::<Vec<_>>(), false)
 //     }
-    // #[test]
-    // fn unigram_probs_exists() {
-    //     let mut sa = sais("aaab");
-    //     sa.compute_smoothed_unigram_probs(Some(100));
-    //     let sa = sa;
+//     #[test]
+//     fn unigram_probs_exists() {
+//         let mut sa = sais("aaab");
+//         let sampler = Sampler::new()
+//         sa.compute_smoothed_unigram_probs(Some(100));
+//         let sa = sa;
 
-    //     let unigram_probs = sa.get_cached_smoothed_unigram_probs();
-    //     let residual = (unigram_probs.iter().sum::<f64>() - 1.0).abs();
-    //     assert!(residual < 1e-4);
+//         let unigram_probs = sa.get_cached_smoothed_unigram_probs();
+//         let residual = (unigram_probs.iter().sum::<f64>() - 1.0).abs();
+//         assert!(residual < 1e-4);
 
-    //     // Additive smoothing results in non-zero probability on unused vocabulary
-    //     assert!(unigram_probs[0] > 0.0);
-    // }
+//         // Additive smoothing results in non-zero probability on unused vocabulary
+//         assert!(unigram_probs[0] > 0.0);
+//     }
 //     #[test]
 //     fn compute_ngram_counts_exists() {
 //         let sa = sais("aaabbbaaa");

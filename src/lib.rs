@@ -1,5 +1,5 @@
 pub mod mmap_slice;
-pub use sampler::{Sampler, SamplerBuilder, SampleableIndex};
+pub use sampler::Sampler;
 pub use in_memory_index::InMemoryIndex;
 pub use memmap_index::MemmapIndex;
 pub use sharded_memmap_index::ShardedMemmapIndex;

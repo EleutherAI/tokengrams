@@ -17,7 +17,7 @@ derive_builder = "0.20.0"
 funty = "2.0.0"
 indicatif = "0.17.8"
 memmap2 = "0.9.4"
-pyo3 = { version = "0.20.1", features = ["extension-module"] }
+pyo3 = { version = "0.20.1", features = ["extension-module", "anyhow"] }
 rand = "0.8.5"
 rayon = "1.10.0"
 rayon-core = "1.12.1"
