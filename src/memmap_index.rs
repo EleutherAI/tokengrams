@@ -9,7 +9,7 @@ use crate::countable::Countable;
 use crate::table::SuffixTable;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
-#[pyclass]
+#[pyclass(frozen)]
 pub struct MemmapIndex {
     table: SuffixTable<MmapSlice<u16>, MmapSlice<u64>>,
 }

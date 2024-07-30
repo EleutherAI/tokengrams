@@ -9,8 +9,7 @@ use crate::countable::Countable;
 use crate::util::transmute_slice;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
-#[pyclass]
-#[derive(Builder)]
+#[pyclass(frozen)]
 pub struct InMemoryIndex {
     table: SuffixTable,
 }

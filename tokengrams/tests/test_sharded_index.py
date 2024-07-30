@@ -1,11 +1,9 @@
 from itertools import pairwise
 from tempfile import NamedTemporaryFile
 import random
-from tokengrams import MemmapIndex
+from tokengrams import MemmapIndex, ShardedMemmapIndex
 
 import numpy as np
-
-from tokengrams.sharded_index import ShardedMemmapIndex
 
 
 def check_sharded_index(index: ShardedMemmapIndex, tokens: list[int], eos_token: int):

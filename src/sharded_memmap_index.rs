@@ -4,7 +4,7 @@ use crate::MemmapIndex;
 use std::collections::HashMap;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
-#[pyclass]
+#[pyclass(frozen)]
 pub struct ShardedMemmapIndex {
     shards: Vec<MemmapIndex>,
 }
