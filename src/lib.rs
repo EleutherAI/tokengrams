@@ -7,12 +7,12 @@ pub use table::SuffixTable;
 /// Python bindings
 use pyo3::prelude::*;
 
-mod sharded_memmap_index;
 mod in_memory_index;
 mod memmap_index;
-mod sample;
-mod table;
 mod par_quicksort;
+mod sample;
+mod sharded_memmap_index;
+mod table;
 mod util;
 
 #[pymodule]

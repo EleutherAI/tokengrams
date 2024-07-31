@@ -120,9 +120,6 @@ class ShardedMemmapIndex:
     def count(self, query: list[int]) -> int:
         """Count the number of occurrences of `query` in the index."""
 
-    # def positions(self, query: list[int]) -> list[int]:
-    #     """Returns an unordered list of positions where `query` starts in `text`."""
-
     def count_next(self, query: list[int], vocab: int | None = None) -> list[int]:
         """Count the occurrences of each token directly following `query`."""
 

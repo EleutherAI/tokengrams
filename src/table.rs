@@ -3,9 +3,8 @@ extern crate utf16_literal;
 use crate::par_quicksort::par_sort_unstable_by_key;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{fmt, ops::Deref, u64};
 use std::collections::HashMap;
-use crate::sample::Sample;
+use std::{fmt, ops::Deref, u64};
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 /// The table supports n-gram statistics computation and language modeling over text corpora.
@@ -48,10 +47,7 @@ where
     U: Deref<Target = [u64]> + Sync,
 {
     pub fn from_parts(text: T, table: U) -> Self {
-        SuffixTable {
-            text,
-            table,
-        }
+        SuffixTable { text, table }
     }
 
     /// Consumes the suffix table and returns the underlying text and table.
@@ -273,8 +269,9 @@ where
             }
             suffix = self.suffix(mid + 1);
         }
-        
-        let (token_start, token_end) = self.range_boundaries(&suffix[..query.len() + 1], search_start, search_end);
+
+        let (token_start, token_end) =
+            self.range_boundaries(&suffix[..query.len() + 1], search_start, search_end);
         counts[suffix[query.len()] as usize] = token_end - token_start;
 
         if search_start < token_start {
@@ -309,9 +306,17 @@ where
             suffix = self.suffix(mid + 1);
         }
 
-        let (start, end) = self.range_boundaries(&suffix[..query.len() + 1], search_start, search_end);
+        let (start, end) =
+            self.range_boundaries(&suffix[..query.len() + 1], search_start, search_end);
         if n < target_n {
-            self.recurse_count_ngrams(start, end, n + 1, &suffix[..query.len() + 1], target_n, count_map);
+            self.recurse_count_ngrams(
+                start,
+                end,
+                n + 1,
+                &suffix[..query.len() + 1],
+                target_n,
+                count_map,
+            );
         } else {
             *count_map.entry(end - start).or_insert(0) += 1;
         }

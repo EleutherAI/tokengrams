@@ -1,14 +1,13 @@
+use anyhow::Result;
 use bincode::{deserialize, serialize};
-use std::collections::HashMap;
 use pyo3::prelude::*;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use anyhow::Result;
 
+use crate::sample::{KneserNeyCache, Sample};
 use crate::table::SuffixTable;
-use crate::sample::Sample;
 use crate::util::transmute_slice;
-use crate::sample::KneserNeyCache;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
 #[pyclass]
@@ -32,7 +31,7 @@ impl InMemoryIndex {
     pub fn from_pretrained(path: String) -> PyResult<Self> {
         // TODO: handle errors here
         let table: SuffixTable = deserialize(&std::fs::read(path)?).unwrap();
-        Ok(InMemoryIndex { 
+        Ok(InMemoryIndex {
             table,
             cache: KneserNeyCache::default(),
         })
@@ -98,7 +97,12 @@ impl InMemoryIndex {
     /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
     #[pyo3(signature = (query, n, k, num_samples, vocab=None))]
     pub fn sample_unsmoothed(
-        &self, query: Vec<u16>, n: usize, k: usize, num_samples: usize, vocab: Option<u16>,
+        &self,
+        query: Vec<u16>,
+        n: usize,
+        k: usize,
+        num_samples: usize,
+        vocab: Option<u16>,
     ) -> Result<Vec<Vec<u16>>> {
         self.sample_unsmoothed_rs(&query, n, k, num_samples, vocab)
     }
@@ -113,14 +117,23 @@ impl InMemoryIndex {
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
     #[pyo3(signature = (queries, vocab=None))]
-    pub fn batch_get_smoothed_probs(&mut self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<f64>> {
+    pub fn batch_get_smoothed_probs(
+        &mut self,
+        queries: Vec<Vec<u16>>,
+        vocab: Option<u16>,
+    ) -> Vec<Vec<f64>> {
         self.batch_get_smoothed_probs_rs(&queries, vocab)
     }
 
     /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
     #[pyo3(signature = (query, n, k, num_samples, vocab=None))]
     pub fn sample_smoothed(
-        &mut self, query: Vec<u16>, n: usize, k: usize, num_samples: usize, vocab: Option<u16>,
+        &mut self,
+        query: Vec<u16>,
+        n: usize,
+        k: usize,
+        num_samples: usize,
+        vocab: Option<u16>,
     ) -> Result<Vec<Vec<u16>>> {
         self.sample_smoothed_rs(&query, n, k, num_samples, vocab)
     }
@@ -135,7 +148,7 @@ impl InMemoryIndex {
 }
 
 impl Sample for InMemoryIndex {
-    fn get_cache(& self) -> & KneserNeyCache {
+    fn get_cache(&self) -> &KneserNeyCache {
         &self.cache
     }
 

@@ -152,7 +152,9 @@ fn sample_unsmoothed_exists() {
     let a = utf16!("a");
     let s = "aaa".encode_utf16().collect::<Vec<_>>();
     let index = InMemoryIndex::new(s, false);
-    let seqs = index.sample_unsmoothed(a.to_vec(), 3, 10, 20, None).unwrap();
+    let seqs = index
+        .sample_unsmoothed(a.to_vec(), 3, 10, 20, None)
+        .unwrap();
 
     assert_eq!(*seqs[0].last().unwrap(), a[0]);
     assert_eq!(*seqs[19].last().unwrap(), a[0]);
@@ -162,7 +164,9 @@ fn sample_unsmoothed_exists() {
 fn sample_unsmoothed_empty_query_exists() {
     let s = "aaa".encode_utf16().collect::<Vec<_>>();
     let index = InMemoryIndex::new(s.clone(), false);
-    let seqs = index.sample_unsmoothed(Vec::new(), 3, 10, 20, None).unwrap();
+    let seqs = index
+        .sample_unsmoothed(Vec::new(), 3, 10, 20, None)
+        .unwrap();
 
     assert_eq!(*seqs[0].last().unwrap(), utf16!("a")[0]);
     assert_eq!(*seqs[19].last().unwrap(), utf16!("a")[0]);
@@ -170,23 +174,24 @@ fn sample_unsmoothed_empty_query_exists() {
 
 #[test]
 fn sample_smoothed_exists() {
-    let tokens = "aabbccabccba".to_string();
-    let sa = sais(&tokens);
-    let s = tokens.encode_utf16().collect::<Vec<_>>();
+    let s = "aabbccabccba".encode_utf16().collect::<Vec<_>>();
     let mut index = InMemoryIndex::new(s.clone(), false);
 
-    let tokens = &index.sample_smoothed(s[0..1].to_vec(), 3, 10, 1, None).unwrap()[0];
+    let tokens = &index
+        .sample_smoothed(s[0..1].to_vec(), 3, 10, 1, None)
+        .unwrap()[0];
 
     assert_eq!(tokens.len(), 11);
 }
 
 #[test]
 fn sample_smoothed_unigrams_exists() {
-    let tokens = "aabbccabccba".to_string();
-    let s = tokens.encode_utf16().collect::<Vec<_>>();
+    let s = "aabbccabccba".encode_utf16().collect::<Vec<_>>();
     let mut index = InMemoryIndex::new(s.clone(), false);
 
-    let tokens = &index.sample_smoothed(s[0..1].to_vec(), 1, 10, 10, None).unwrap()[0];
+    let tokens = &index
+        .sample_smoothed(s[0..1].to_vec(), 1, 10, 10, None)
+        .unwrap()[0];
 
     assert_eq!(tokens.len(), 11);
 }
@@ -205,7 +210,9 @@ fn prop_sample() {
         };
         let index = InMemoryIndex::new(s.clone(), false);
 
-        let got = &index.sample_unsmoothed(query.to_vec(), 2, 1, 1, None).unwrap()[0];
+        let got = &index
+            .sample_unsmoothed(query.to_vec(), 2, 1, 1, None)
+            .unwrap()[0];
         s.contains(got.first().unwrap())
     }
 
@@ -215,26 +222,27 @@ fn prop_sample() {
 #[test]
 fn smoothed_probs_exists() {
     let tokens = "aaaaaaaabc".to_string();
-    let s = tokens.encode_utf16().collect::<Vec<_>>();
-    let mut index = InMemoryIndex::new(s.clone(), false);
 
-    let sa = sais(&tokens);
+    let sa: SuffixTable = sais(&tokens);
     let query = vec![utf16!("b")[0]];
     let vocab = utf16!("c")[0] + 1;
     let a = utf16!("a")[0] as usize;
     let c = utf16!("c")[0] as usize;
 
-    let smoothed_probs = index.get_smoothed_probs(query.clone(), Some(vocab));
     let bigram_counts = sa.count_next(&query, Some(vocab));
     let unsmoothed_probs = bigram_counts
         .iter()
         .map(|&x| x as f64 / bigram_counts.iter().sum::<usize>() as f64)
         .collect::<Vec<f64>>();
-    
+
+    let s = tokens.encode_utf16().collect::<Vec<_>>();
+    let mut index = InMemoryIndex::new(s.clone(), false);
+    let smoothed_probs = index.get_smoothed_probs(query.clone(), Some(vocab));
+
     // The naive bigram probability for query 'b' is p(c) = 1.0.
     assert!(unsmoothed_probs[a] == 0.0);
     assert!(unsmoothed_probs[c] == 1.0);
-    
+
     // The smoothed bigram probabilities interpolate with the lower-order unigram
     // probabilities where p(a) is high, lowering p(c)
     assert!(smoothed_probs[a] > 0.1);
@@ -243,8 +251,7 @@ fn smoothed_probs_exists() {
 
 #[test]
 fn smoothed_probs_empty_query_exists() {
-    let tokens = "aaa".to_string();
-    let s = tokens.encode_utf16().collect::<Vec<_>>();
+    let s = "aaa".encode_utf16().collect::<Vec<_>>();
     let mut index = InMemoryIndex::new(s, false);
 
     let probs = index.get_smoothed_probs(Vec::new(), Some(utf16!("a")[0] + 1));
