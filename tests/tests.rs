@@ -2,7 +2,7 @@ extern crate quickcheck;
 extern crate utf16_literal;
 
 use quickcheck::{QuickCheck, Testable};
-use tokengrams::{SuffixTable, CountableIndex, SamplerRs};
+use tokengrams::{InMemoryIndex, SuffixTable};
 use utf16_literal::utf16;
 
 fn sais(text: &str) -> SuffixTable {
@@ -12,7 +12,6 @@ fn sais(text: &str) -> SuffixTable {
 fn qc<T: Testable>(f: T) {
     QuickCheck::new().tests(1000).max_tests(10000).quickcheck(f);
 }
-
 
 // Do some testing on substring search.
 
@@ -150,15 +149,10 @@ fn prop_positions() {
 
 #[test]
 fn sample_unsmoothed_exists() {
-    let sa = sais("aaa");
     let a = utf16!("a");
-    // Create temporary token file containing contents of suffix array [97, 97, 97]
-    // let mut file = File::create("tmp.bin")?;
-
-    let index = CountableIndex::new(Box::new(sa));
-    let sampler = SamplerRs::new(index);
-    // let sampler = SamplerBuilder::default().index().build().unwrap();
-    let seqs = sampler.sample_unsmoothed(a, 3, 10, 20, None).unwrap();
+    let s = "aaa".encode_utf16().collect::<Vec<_>>();
+    let index = InMemoryIndex::new(s, false);
+    let seqs = index.sample_unsmoothed(a.to_vec(), 3, 10, 20, None).unwrap();
 
     assert_eq!(*seqs[0].last().unwrap(), a[0]);
     assert_eq!(*seqs[19].last().unwrap(), a[0]);
@@ -166,10 +160,9 @@ fn sample_unsmoothed_exists() {
 
 #[test]
 fn sample_unsmoothed_empty_query_exists() {
-    let sa = sais("aaa");
-    let index = CountableIndex::new(Box::new(sa));
-    let sampler = SamplerRs::new(index);
-    let seqs = sampler.sample_unsmoothed(utf16!(""), 3, 10, 20, None).unwrap();
+    let s = "aaa".encode_utf16().collect::<Vec<_>>();
+    let index = InMemoryIndex::new(s.clone(), false);
+    let seqs = index.sample_unsmoothed(Vec::new(), 3, 10, 20, None).unwrap();
 
     assert_eq!(*seqs[0].last().unwrap(), utf16!("a")[0]);
     assert_eq!(*seqs[19].last().unwrap(), utf16!("a")[0]);
@@ -179,10 +172,10 @@ fn sample_unsmoothed_empty_query_exists() {
 fn sample_smoothed_exists() {
     let tokens = "aabbccabccba".to_string();
     let sa = sais(&tokens);
-    let index = CountableIndex::new(Box::new(sa));
-    let mut sampler = SamplerRs::new(index);
+    let s = tokens.encode_utf16().collect::<Vec<_>>();
+    let mut index = InMemoryIndex::new(s.clone(), false);
 
-    let tokens = &sampler.sample_smoothed(utf16!("a"), 3, 10, 1, None).unwrap()[0];
+    let tokens = &index.sample_smoothed(s[0..1].to_vec(), 3, 10, 1, None).unwrap()[0];
 
     assert_eq!(tokens.len(), 11);
 }
@@ -190,11 +183,10 @@ fn sample_smoothed_exists() {
 #[test]
 fn sample_smoothed_unigrams_exists() {
     let tokens = "aabbccabccba".to_string();
-    let sa = sais(&tokens);
-    let index = CountableIndex::new(Box::new(sa));
-    let mut sampler = SamplerRs::new(index);
+    let s = tokens.encode_utf16().collect::<Vec<_>>();
+    let mut index = InMemoryIndex::new(s.clone(), false);
 
-    let tokens = &sampler.sample_smoothed(utf16!("a"), 1, 10, 10, None).unwrap()[0];
+    let tokens = &index.sample_smoothed(s[0..1].to_vec(), 1, 10, 10, None).unwrap()[0];
 
     assert_eq!(tokens.len(), 11);
 }
@@ -202,10 +194,6 @@ fn sample_smoothed_unigrams_exists() {
 #[test]
 fn prop_sample() {
     fn prop(s: String) -> bool {
-        let sa = sais(&s);
-        let index = CountableIndex::new(Box::new(sa));
-        let sampler = SamplerRs::new(index);
-
         let s = s.encode_utf16().collect::<Vec<_>>();
         if s.len() < 2 {
             return true;
@@ -215,7 +203,9 @@ fn prop_sample() {
             Some(slice) => slice,
             None => &[],
         };
-        let got = &sampler.sample_unsmoothed(query, 2, 1, 1, None).unwrap()[0];
+        let index = InMemoryIndex::new(s.clone(), false);
+
+        let got = &index.sample_unsmoothed(query.to_vec(), 2, 1, 1, None).unwrap()[0];
         s.contains(got.first().unwrap())
     }
 
@@ -225,17 +215,16 @@ fn prop_sample() {
 #[test]
 fn smoothed_probs_exists() {
     let tokens = "aaaaaaaabc".to_string();
-    let sa = sais(&tokens);
-    let index = CountableIndex::new(Box::new(sa));
-    let mut sampler = SamplerRs::new(index);
+    let s = tokens.encode_utf16().collect::<Vec<_>>();
+    let mut index = InMemoryIndex::new(s.clone(), false);
 
-    let mut sa = sais(&tokens);
+    let sa = sais(&tokens);
     let query = vec![utf16!("b")[0]];
     let vocab = utf16!("c")[0] + 1;
     let a = utf16!("a")[0] as usize;
     let c = utf16!("c")[0] as usize;
 
-    let smoothed_probs = sampler.get_smoothed_probs(&query, Some(vocab));
+    let smoothed_probs = index.get_smoothed_probs(query.clone(), Some(vocab));
     let bigram_counts = sa.count_next(&query, Some(vocab));
     let unsmoothed_probs = bigram_counts
         .iter()
@@ -255,11 +244,10 @@ fn smoothed_probs_exists() {
 #[test]
 fn smoothed_probs_empty_query_exists() {
     let tokens = "aaa".to_string();
-    let sa = sais(&tokens);
-    let index = CountableIndex::new(Box::new(sa));
-    let mut sampler = SamplerRs::new(index);
+    let s = tokens.encode_utf16().collect::<Vec<_>>();
+    let mut index = InMemoryIndex::new(s, false);
 
-    let probs = sampler.get_smoothed_probs(&[], Some(utf16!("a")[0] + 1));
+    let probs = index.get_smoothed_probs(Vec::new(), Some(utf16!("a")[0] + 1));
     let residual = (probs.iter().sum::<f64>() - 1.0).abs();
 
     assert!(residual < 1e-4);

@@ -2,16 +2,19 @@ use pyo3::prelude::*;
 use std::fs::{File, OpenOptions};
 use std::time::Instant;
 use std::collections::HashMap;
+use anyhow::Result;
 
 use crate::mmap_slice::{MmapSlice, MmapSliceMut};
 use crate::par_quicksort::par_sort_unstable_by_key;
-use crate::countable::Countable;
+use crate::sample::Sample;
 use crate::table::SuffixTable;
+use crate::sample::KneserNeyCache;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
-#[pyclass(frozen)]
+#[pyclass]
 pub struct MemmapIndex {
     table: SuffixTable<MmapSlice<u16>, MmapSlice<u64>>,
+    cache: KneserNeyCache,
 }
 
 #[pymethods]
@@ -26,6 +29,7 @@ impl MemmapIndex {
                 MmapSlice::new(&text_file)?,
                 MmapSlice::new(&table_file)?,
             ),
+            cache: KneserNeyCache::default(),
         })
     }
 
@@ -92,6 +96,7 @@ impl MemmapIndex {
         let table_mmap = MmapSlice::new(&table_file)?;
         Ok(MemmapIndex {
             table: SuffixTable::from_parts(text_mmap, table_mmap),
+            cache: KneserNeyCache::default(),
         })
     }
 
@@ -120,9 +125,55 @@ impl MemmapIndex {
     pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
         self.table.batch_count_next(&queries, vocab)
     }
+
+    /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
+    #[pyo3(signature = (query, n, k, num_samples, vocab=None))]
+    pub fn sample_unsmoothed(
+        &self, query: Vec<u16>, n: usize, k: usize, num_samples: usize, vocab: Option<u16>,
+    ) -> Result<Vec<Vec<u16>>> {
+        self.sample_unsmoothed_rs(&query, n, k, num_samples, vocab)
+    }
+
+    /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
+    /// tokens in the query.
+    #[pyo3(signature = (query, vocab=None))]
+    pub fn get_smoothed_probs(&mut self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
+        self.get_smoothed_probs_rs(&query, vocab)
+    }
+
+    /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
+    /// tokens in the query.
+    #[pyo3(signature = (queries, vocab=None))]
+    pub fn batch_get_smoothed_probs(&mut self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<f64>> {
+        self.batch_get_smoothed_probs_rs(&queries, vocab)
+    }
+
+    /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
+    #[pyo3(signature = (query, n, k, num_samples, vocab=None))]
+    pub fn sample_smoothed(
+        &mut self, query: Vec<u16>, n: usize, k: usize, num_samples: usize, vocab: Option<u16>,
+    ) -> Result<Vec<Vec<u16>>> {
+        self.sample_smoothed_rs(&query, n, k, num_samples, vocab)
+    }
+
+    /// Warning: O(k**n) where k is vocabulary size, use with caution.
+    /// Improve smoothed model quality by replacing the default delta hyperparameters
+    /// for models of order n and below with improved estimates over the entire index.
+    /// https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16."""
+    pub fn estimate_deltas(&mut self, n: usize) {
+        self.estimate_deltas_rs(n);
+    }
 }
 
-impl Countable for MemmapIndex {
+impl Sample for MemmapIndex {
+    fn get_cache(& self) -> & KneserNeyCache {
+        &self.cache
+    }
+
+    fn get_mut_cache(&mut self) -> &mut KneserNeyCache {
+        &mut self.cache
+    }
+
     fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         self.table.count_next(query, vocab)
     }

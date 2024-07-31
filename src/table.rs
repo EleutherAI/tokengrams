@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Deref, u64};
 use std::collections::HashMap;
-use crate::countable::Countable;
+use crate::sample::Sample;
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 /// The table supports n-gram statistics computation and language modeling over text corpora.
@@ -181,7 +181,7 @@ where
     }
 
     /// Determine start and end `table` indices of items that start with `query`.
-    pub fn boundaries(&self, query: &[u16]) -> (usize, usize) {
+    fn boundaries(&self, query: &[u16]) -> (usize, usize) {
         if self.text.is_empty() || query.is_empty() {
             return (0, self.table.len());
         }
@@ -201,7 +201,7 @@ where
     }
 
     /// Determine start and end indices of items that start with `query` in the `table` range.
-    pub fn range_boundaries(
+    fn range_boundaries(
         &self,
         query: &[u16],
         range_start: usize,
@@ -232,14 +232,6 @@ where
     }
 
     // Count occurrences of each token directly following the query sequence.
-    pub fn batch_count_next(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
-        queries
-            .into_par_iter()
-            .map(|query| self.count_next(query.as_slice(), vocab))
-            .collect()
-    }
-
-    // Count occurrences of each token directly following the query sequence.
     pub fn count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
         let vocab_size: usize = match vocab {
             Some(size) => size as usize,
@@ -247,9 +239,17 @@ where
         };
         let mut counts: Vec<usize> = vec![0; vocab_size];
 
-        let (range_start, range_end) = self.boundaries(&query);
-        self.recurse_count_next(&mut counts, &query, range_start, range_end);
+        let (range_start, range_end) = self.boundaries(query);
+        self.recurse_count_next(&mut counts, query, range_start, range_end);
         counts
+    }
+
+    // Count occurrences of each token directly following the query sequence.
+    pub fn batch_count_next(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
+        queries
+            .into_par_iter()
+            .map(|query| self.count_next(query.as_slice(), vocab))
+            .collect()
     }
 
     // count_next helper method.
@@ -323,20 +323,9 @@ where
             self.recurse_count_ngrams(end, search_end, n, query, target_n, count_map);
         }
     }
-}
-
-impl<T, U> Countable for SuffixTable<T, U>
-where
-    T: Deref<Target = [u16]> + Sync + Send,
-    U: Deref<Target = [u64]> + Sync + Send,
-{
-    // Count occurrences of each token directly following the query sequence.
-    fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
-        self.count_next(query, vocab)
-    }
 
     // For a given n, produce a map from an occurrence count to the number of unique n-grams with that occurrence count.
-    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
+    pub fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
         let mut count_map = HashMap::new();
         let (range_start, range_end) = self.boundaries(&[]);
         self.recurse_count_ngrams(range_start, range_end, 1, &[], n, &mut count_map);

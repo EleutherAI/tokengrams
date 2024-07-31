@@ -22,7 +22,7 @@ def check_sharded_index(index: ShardedMemmapIndex, tokens: list[int], eos_token:
     # Check bigram samples
     for i in range(len(tokens[:20])):
         query = tokens[:i]
-        sample = index.sample(query, 2, 1, 1, max(tokens) + 1)[0]
+        sample = index.sample_unsmoothed(query, 2, 1, 1, max(tokens) + 1)[0]
         assert len(sample) == 1 + len(query)
         assert all(s in tokens for s in sample)
 
