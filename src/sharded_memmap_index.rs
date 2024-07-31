@@ -1,97 +1,92 @@
 use anyhow::Result;
-use bincode::{deserialize, serialize};
 use pyo3::prelude::*;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
 
 use crate::sample::{KneserNeyCache, Sample};
-use crate::table::SuffixTable;
-use crate::util::transmute_slice;
+use crate::MemmapIndex;
 
-/// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
+/// Expose suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
-pub struct InMemoryIndex {
-    table: SuffixTable,
+pub struct ShardedMemmapIndex {
+    shards: Vec<MemmapIndex>,
     cache: KneserNeyCache,
 }
 
 #[pymethods]
-impl InMemoryIndex {
+impl ShardedMemmapIndex {
     #[new]
-    #[pyo3(signature = (tokens, verbose=false))]
-    pub fn new_py(_py: Python, tokens: Vec<u16>, verbose: bool) -> Self {
-        InMemoryIndex {
-            table: SuffixTable::new(tokens, verbose),
-            cache: KneserNeyCache::default(),
-        }
-    }
+    pub fn new(_py: Python, files: Vec<(String, String)>) -> PyResult<Self> {
+        let shards: Vec<MemmapIndex> = files
+            .into_iter()
+            .map(|(text_path, table_path)| MemmapIndex::new(_py, text_path, table_path).unwrap())
+            .collect();
 
-    #[staticmethod]
-    pub fn from_pretrained(path: String) -> PyResult<Self> {
-        // TODO: handle errors here
-        let table: SuffixTable = deserialize(&std::fs::read(path)?).unwrap();
-        Ok(InMemoryIndex {
-            table,
+        Ok(ShardedMemmapIndex {
+            shards,
             cache: KneserNeyCache::default(),
         })
     }
 
     #[staticmethod]
-    #[pyo3(signature = (path, verbose=false, token_limit=None))]
-    pub fn from_token_file(
-        path: String,
-        verbose: bool,
-        token_limit: Option<usize>,
-    ) -> PyResult<Self> {
-        let mut buffer = Vec::new();
-        let mut file = File::open(&path)?;
+    #[pyo3(signature = (paths, verbose=false))]
+    pub fn build(paths: Vec<(String, String)>, verbose: bool) -> PyResult<Self> {
+        let shards: Vec<MemmapIndex> = paths
+            .into_iter()
+            .map(|(token_paths, index_paths)| {
+                MemmapIndex::build(token_paths, index_paths, verbose).unwrap()
+            })
+            .collect();
 
-        if let Some(max_tokens) = token_limit {
-            // Limit on the number of tokens to consider is provided
-            let max_bytes = max_tokens * std::mem::size_of::<u16>();
-            file.take(max_bytes as u64).read_to_end(&mut buffer)?;
-        } else {
-            file.read_to_end(&mut buffer)?;
-        };
-
-        Ok(InMemoryIndex {
-            table: SuffixTable::new(transmute_slice(buffer.as_slice()), verbose),
+        Ok(ShardedMemmapIndex {
+            shards,
             cache: KneserNeyCache::default(),
         })
     }
 
     pub fn is_sorted(&self) -> bool {
-        self.table.is_sorted()
+        self.shards.iter().all(|shard| shard.is_sorted())
     }
 
     pub fn contains(&self, query: Vec<u16>) -> bool {
-        self.table.contains(&query)
-    }
-
-    pub fn positions(&self, query: Vec<u16>) -> Vec<u64> {
-        self.table.positions(&query).to_vec()
+        self.shards
+            .iter()
+            .any(|shard| shard.contains(query.clone()))
     }
 
     pub fn count(&self, query: Vec<u16>) -> usize {
-        self.table.positions(&query).len()
+        self.shards
+            .iter()
+            .map(|shard| shard.count(query.clone()))
+            .sum()
     }
 
     #[pyo3(signature = (query, vocab=None))]
     pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
-        self.table.count_next(&query, vocab)
+        let counts = self
+            .shards
+            .iter()
+            .map(|shard| shard.count_next_slice(&query, vocab))
+            .collect::<Vec<_>>();
+        (0..counts[0].len())
+            .map(|i| counts.iter().map(|count| count[i]).sum())
+            .collect()
     }
 
     #[pyo3(signature = (queries, vocab=None))]
     pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
-        self.table.batch_count_next(&queries, vocab)
-    }
+        let batch_counts = self
+            .shards
+            .iter()
+            .map(|shard| shard.batch_count_next(queries.clone(), vocab))
+            .collect::<Vec<_>>();
 
-    pub fn save(&self, path: String) -> PyResult<()> {
-        // TODO: handle errors here
-        let bytes = serialize(&self.table).unwrap();
-        std::fs::write(&path, bytes)?;
-        Ok(())
+        (0..queries.len())
+            .map(|i| {
+                (0..batch_counts[0][i].len())
+                    .map(|j| batch_counts.iter().map(|count| count[i][j]).sum())
+                    .collect()
+            })
+            .collect()
     }
 
     /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
@@ -147,7 +142,7 @@ impl InMemoryIndex {
     }
 }
 
-impl Sample for InMemoryIndex {
+impl Sample for ShardedMemmapIndex {
     fn get_cache(&self) -> &KneserNeyCache {
         &self.cache
     }
@@ -157,19 +152,25 @@ impl Sample for InMemoryIndex {
     }
 
     fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
-        self.table.count_next(&query, vocab)
+        let counts = self
+            .shards
+            .iter()
+            .map(|shard| shard.count_next_slice(query, vocab))
+            .collect::<Vec<_>>();
+        (0..counts[0].len())
+            .map(|i| counts.iter().map(|count| count[i]).sum())
+            .collect()
     }
 
     fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
-        self.table.count_ngrams(n)
-    }
-}
-
-impl InMemoryIndex {
-    pub fn new(tokens: Vec<u16>, verbose: bool) -> Self {
-        InMemoryIndex {
-            table: SuffixTable::new(tokens, verbose),
-            cache: KneserNeyCache::default(),
-        }
+        self.shards.iter().map(|shard| shard.count_ngrams(n)).fold(
+            HashMap::new(),
+            |mut acc, counts| {
+                for (k, v) in counts {
+                    *acc.entry(k).or_insert(0) += v;
+                }
+                acc
+            },
+        )
     }
 }
