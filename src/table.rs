@@ -5,6 +5,8 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{fmt, ops::Deref, u64};
+use funty::Unsigned;
+use std::fmt::Debug;
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 /// The table supports n-gram statistics computation and language modeling over text corpora.
@@ -15,12 +17,12 @@ pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
 }
 
 /// Methods for vanilla in-memory suffix tables
-impl SuffixTable<Box<[u16]>, Box<[u64]>> {
+impl<T: Unsigned> SuffixTable<Box<[T]>, Box<[u64]>> {
     /// Creates a new suffix table for `text` in `O(n log n)` time and `O(n)`
     /// space.
     pub fn new<S>(src: S, verbose: bool) -> Self
     where
-        S: Into<Box<[u16]>>,
+        S: Into<Box<[T]>>,
     {
         let text = src.into();
 
@@ -41,9 +43,14 @@ impl SuffixTable<Box<[u16]>, Box<[u64]>> {
     }
 }
 
-impl<T, U> SuffixTable<T, U>
+trait Token: Unsigned + Copy + Sync + Debug + TryInto<usize> + TryFrom<usize> + 'static {}
+impl Token for u16 {}
+impl Token for u32 {}
+
+impl<T, U, E> SuffixTable<T, U>
 where
-    T: Deref<Target = [u16]> + Sync,
+    E: Token,
+    T: Deref<Target = [E]> + Sync,
     U: Deref<Target = [u64]> + Sync,
 {
     pub fn from_parts(text: T, table: U) -> Self {
@@ -81,7 +88,7 @@ where
     /// Returns the suffix at index `i`.
     #[inline]
     #[allow(dead_code)]
-    pub fn suffix(&self, i: usize) -> &[u16] {
+    pub fn suffix(&self, i: usize) -> &[E] {
         &self.text[self.table[i] as usize..]
     }
 
@@ -106,7 +113,7 @@ where
     /// assert!(sa.contains(utf16!("quick")));
     /// ```
     #[allow(dead_code)]
-    pub fn contains(&self, query: &[u16]) -> bool {
+    pub fn contains(&self, query: &[E]) -> bool {
         !query.is_empty()
             && self
                 .table
@@ -143,7 +150,7 @@ where
     /// assert_eq!(sa.positions(utf16!("quick")), &[4, 29]);
     /// ```
     #[allow(dead_code)]
-    pub fn positions(&self, query: &[u16]) -> &[u64] {
+    pub fn positions(&self, query: &[E]) -> &[u64] {
         // We can quickly decide whether the query won't match at all if
         // it's outside the range of suffixes.
         if self.text.is_empty()
@@ -177,7 +184,7 @@ where
     }
 
     /// Determine start and end `table` indices of items that start with `query`.
-    fn boundaries(&self, query: &[u16]) -> (usize, usize) {
+    fn boundaries(&self, query: &[E]) -> (usize, usize) {
         if self.text.is_empty() || query.is_empty() {
             return (0, self.table.len());
         }
@@ -199,7 +206,7 @@ where
     /// Determine start and end indices of items that start with `query` in the `table` range.
     fn range_boundaries(
         &self,
-        query: &[u16],
+        query: &[E],
         range_start: usize,
         range_end: usize,
     ) -> (usize, usize) {
@@ -228,10 +235,10 @@ where
     }
 
     // Count occurrences of each token directly following the query sequence.
-    pub fn count_next(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+    pub fn count_next(&self, query: &[E], vocab: Option<E>) -> Vec<usize> {
         let vocab_size: usize = match vocab {
-            Some(size) => size as usize,
-            None => u16::MAX as usize + 1,
+            Some(size) => size.try_into().unwrap_or(usize::MAX),
+            None => E::MAX.try_into().unwrap_or(usize::MAX - 1) + 1,
         };
         let mut counts: Vec<usize> = vec![0; vocab_size];
 
@@ -241,7 +248,7 @@ where
     }
 
     // Count occurrences of each token directly following the query sequence.
-    pub fn batch_count_next(&self, queries: &[Vec<u16>], vocab: Option<u16>) -> Vec<Vec<usize>> {
+    pub fn batch_count_next(&self, queries: &[Vec<E>], vocab: Option<E>) -> Vec<Vec<usize>> {
         queries
             .into_par_iter()
             .map(|query| self.count_next(query.as_slice(), vocab))
@@ -252,7 +259,7 @@ where
     fn recurse_count_next(
         &self,
         counts: &mut Vec<usize>,
-        query: &[u16],
+        query: &[E],
         search_start: usize,
         search_end: usize,
     ) {
@@ -272,7 +279,9 @@ where
 
         let (token_start, token_end) =
             self.range_boundaries(&suffix[..query.len() + 1], search_start, search_end);
-        counts[suffix[query.len()] as usize] = token_end - token_start;
+        
+        let index: usize = suffix[query.len()].try_into().unwrap_or_else(|_| panic!("Token > usize::MAX"));
+        counts[index] = token_end - token_start;
 
         if search_start < token_start {
             self.recurse_count_next(counts, query, search_start, token_start);
@@ -288,7 +297,7 @@ where
         search_start: usize,
         search_end: usize,
         n: usize,
-        query: &[u16],
+        query: &[E],
         target_n: usize,
         count_map: &mut HashMap<usize, usize>,
     ) {

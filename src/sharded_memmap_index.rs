@@ -7,8 +7,8 @@ use crate::MemmapIndex;
 
 /// Expose suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
-pub struct ShardedMemmapIndex {
-    shards: Vec<MemmapIndex>,
+pub struct ShardedMemmapIndex<T> {
+    shards: Vec<MemmapIndex<T>>,
     cache: KneserNeyCache,
 }
 

@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::time::Instant;
+use funty::Unsigned;
 
 use crate::mmap_slice::{MmapSlice, MmapSliceMut};
 use crate::par_quicksort::par_sort_unstable_by_key;
@@ -10,11 +11,42 @@ use crate::sample::{KneserNeyCache, Sample};
 use crate::table::SuffixTable;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
-#[pyclass]
-pub struct MemmapIndex {
-    table: SuffixTable<MmapSlice<u16>, MmapSlice<u64>>,
+// #[pyclass]
+pub struct MemmapIndex<T: Unsigned> {
+    table: SuffixTable<MmapSlice<T>, MmapSlice<u64>>,
     cache: KneserNeyCache,
 }
+
+
+macro_rules! create_interface {
+    ($name: ident, $type: ident) => {
+        #[pyclass]
+        pub struct $name {
+            inner: MemmapIndex<$type>,
+        }
+        #[pymethods]
+        impl $name {
+            #[new]
+            pub fn new(_py: Python, text_path: String, table_path: String, data: $type) -> PyResult<Self> {
+                let text_file = File::open(&text_path)?;
+                let table_file = File::open(&table_path)?;
+
+                Ok(Self {
+                    inner: MemmapIndex { 
+                        table: SuffixTable::from_parts(
+                            MmapSlice::<$type>::new(&text_file)?,
+                            MmapSlice::new(&table_file)?,
+                        ),
+                        cache: KneserNeyCache::default(),
+                    },
+                })
+            }
+        }
+    };
+}
+
+create_interface!(U16, u16);
+create_interface!(U32, u32);
 
 #[pymethods]
 impl MemmapIndex {
