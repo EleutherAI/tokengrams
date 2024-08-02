@@ -43,7 +43,7 @@ impl<T: Unsigned> SuffixTable<Box<[T]>, Box<[u64]>> {
     }
 }
 
-trait Token: Unsigned + Copy + Sync + Debug + TryInto<usize> + TryFrom<usize> + 'static {}
+pub trait Token: Unsigned + Copy + Sync + Debug + TryInto<usize> + TryFrom<usize> + 'static {}
 impl Token for u16 {}
 impl Token for u32 {}
 
@@ -235,10 +235,13 @@ where
     }
 
     // Count occurrences of each token directly following the query sequence.
-    pub fn count_next(&self, query: &[E], vocab: Option<E>) -> Vec<usize> {
+    pub fn count_next(&self, query: &[E], vocab: Option<usize>) -> Vec<usize> {
+        // TODO u32 max
+        // maybe better to provide max vocab then truncate and log if max vocab is greater than u32::max
+        // could do this in python class and then we can take an unchecked usize everywhere
         let vocab_size: usize = match vocab {
-            Some(size) => size.try_into().unwrap_or(usize::MAX),
-            None => E::MAX.try_into().unwrap_or(usize::MAX - 1) + 1,
+            Some(size) => size,
+            None => u16::MAX as usize + 1,
         };
         let mut counts: Vec<usize> = vec![0; vocab_size];
 
@@ -248,7 +251,7 @@ where
     }
 
     // Count occurrences of each token directly following the query sequence.
-    pub fn batch_count_next(&self, queries: &[Vec<E>], vocab: Option<E>) -> Vec<Vec<usize>> {
+    pub fn batch_count_next(&self, queries: &[Vec<E>], vocab: Option<usize>) -> Vec<Vec<usize>> {
         queries
             .into_par_iter()
             .map(|query| self.count_next(query.as_slice(), vocab))
