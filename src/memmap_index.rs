@@ -119,12 +119,12 @@ impl MemmapIndex {
     }
 
     #[pyo3(signature = (query, vocab=None))]
-    pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
+    pub fn count_next(&self, query: Vec<u16>, vocab: Option<usize>) -> Vec<usize> {
         self.table.count_next(&query, vocab)
     }
 
     #[pyo3(signature = (queries, vocab=None))]
-    pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
+    pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<usize>) -> Vec<Vec<usize>> {
         self.table.batch_count_next(&queries, vocab)
     }
 
@@ -136,7 +136,7 @@ impl MemmapIndex {
         n: usize,
         k: usize,
         num_samples: usize,
-        vocab: Option<u16>,
+        vocab: Option<usize>,
     ) -> Result<Vec<Vec<u16>>> {
         self.sample_unsmoothed_rs(&query, n, k, num_samples, vocab)
     }
@@ -144,7 +144,7 @@ impl MemmapIndex {
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
     #[pyo3(signature = (query, vocab=None))]
-    pub fn get_smoothed_probs(&mut self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
+    pub fn get_smoothed_probs(&mut self, query: Vec<u16>, vocab: Option<usize>) -> Vec<f64> {
         self.get_smoothed_probs_rs(&query, vocab)
     }
 
@@ -154,7 +154,7 @@ impl MemmapIndex {
     pub fn batch_get_smoothed_probs(
         &mut self,
         queries: Vec<Vec<u16>>,
-        vocab: Option<u16>,
+        vocab: Option<usize>,
     ) -> Vec<Vec<f64>> {
         self.batch_get_smoothed_probs_rs(&queries, vocab)
     }
@@ -167,7 +167,7 @@ impl MemmapIndex {
         n: usize,
         k: usize,
         num_samples: usize,
-        vocab: Option<u16>,
+        vocab: Option<usize>,
     ) -> Result<Vec<Vec<u16>>> {
         self.sample_smoothed_rs(&query, n, k, num_samples, vocab)
     }
@@ -190,7 +190,7 @@ impl Sample for MemmapIndex {
         &mut self.cache
     }
 
-    fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+    fn count_next_slice(&self, query: &[u16], vocab: Option<usize>) -> Vec<usize> {
         self.table.count_next(query, vocab)
     }
 
