@@ -286,6 +286,24 @@ macro_rules! create_interface {
                 self.inner.estimate_deltas(n);
             }
         }
+        
+        impl Sample<$type> for $name {
+            fn get_cache(&self) -> &KneserNeyCache {
+                &self.inner.cache
+            }
+        
+            fn get_mut_cache(&mut self) -> &mut KneserNeyCache {
+                &mut self.inner.cache
+            }
+        
+            fn count_next_slice(&self, query: &[$type], vocab: Option<usize>) -> Vec<usize> {
+                self.inner.count_next_slice(query, vocab)
+            }
+        
+            fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
+                self.inner.count_ngrams(n)
+            }
+        }
     };
 }
 
