@@ -9,7 +9,7 @@ pub struct MmapSlice<T: Unsigned> {
     _element_type: PhantomData<T>,
 }
 
-impl<T: Unsigned> MmapSlice<T> {
+impl<T: Unsigned > MmapSlice<T> {
     pub fn new<F: MmapAsRawDesc>(file: F) -> std::io::Result<Self> {
         let raw = unsafe { Mmap::map(file)? };
 
@@ -36,7 +36,7 @@ impl<T: Unsigned> MmapSlice<T> {
     }
 }
 
-impl<T: Unsigned> Deref for MmapSlice<T> {
+impl<T: Unsigned > Deref for MmapSlice<T> {
     type Target = [T];
 
     fn deref(&self) -> &[T] {
@@ -50,7 +50,7 @@ pub struct MmapSliceMut<T: Unsigned> {
     _element_type: PhantomData<T>,
 }
 
-impl<T: Unsigned> MmapSliceMut<T> {
+impl<T: Unsigned > MmapSliceMut<T> {
     pub fn new<F: MmapAsRawDesc>(file: F) -> std::io::Result<Self> {
         let raw = unsafe { MmapMut::map_mut(file)? };
 
@@ -80,7 +80,7 @@ impl<T: Unsigned> MmapSliceMut<T> {
     }
 }
 
-impl<T: Unsigned> Deref for MmapSliceMut<T> {
+impl<T: Unsigned > Deref for MmapSliceMut<T> {
     type Target = [T];
 
     fn deref(&self) -> &[T] {
@@ -88,7 +88,7 @@ impl<T: Unsigned> Deref for MmapSliceMut<T> {
     }
 }
 
-impl<T: Unsigned> DerefMut for MmapSliceMut<T> {
+impl<T: Unsigned > DerefMut for MmapSliceMut<T> {
     fn deref_mut(&mut self) -> &mut [T] {
         self.as_slice_mut()
     }

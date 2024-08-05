@@ -9,25 +9,19 @@ use crate::sample::{KneserNeyCache, Sample};
 use crate::table::SuffixTable;
 use crate::util::transmute_slice;
 use crate::table::Table;
-
-#[pyclass(eq, eq_int)]
-#[derive(Clone, PartialEq)]
-enum TokenType {
-    U16,
-    U32,
-}
+use crate::token::TokenType;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
 #[pyclass]
 pub struct InMemoryIndex {
-    table: Box<dyn Table + Send>,
+    table: Box<dyn Table + Send + Sync>,
     cache: KneserNeyCache,
-    utype: TokenType
+    token_type: TokenType
 }
 
 impl InMemoryIndex {
-    pub fn new(tokens: Vec<usize>, verbose: bool, utype: TokenType) -> Self {
-        let table: Box<dyn Table + Send> = match utype {
+    pub fn new(tokens: Vec<usize>, verbose: bool, token_type: TokenType) -> Self {
+        let table: Box<dyn Table + Send + Sync> = match token_type {
             TokenType::U16 => {
                 let tokens: Vec<u16> = tokens.iter().map(|&x| x as u16).collect();
                 Box::new(SuffixTable::<Box<[u16]>, Box<[u64]>>::new(tokens, verbose))
@@ -41,7 +35,7 @@ impl InMemoryIndex {
         InMemoryIndex {
             table,
             cache: KneserNeyCache::default(),
-            utype
+            token_type
         }
     }
 }
@@ -67,9 +61,9 @@ impl Sample for InMemoryIndex {
 #[pymethods]
 impl InMemoryIndex {
     #[new]
-    #[pyo3(signature = (tokens, verbose=false, utype=TokenType::U16))]
-    pub fn new_py(_py: Python, tokens: Vec<u16>, verbose: bool, utype: TokenType) -> Self {
-        let table: Box<dyn Table + Send> = match utype {
+    #[pyo3(signature = (tokens, verbose=false, token_type=TokenType::U16))]
+    pub fn new_py(_py: Python, tokens: Vec<usize>, verbose: bool, token_type: TokenType) -> Self {
+        let table: Box<dyn Table + Send + Sync> = match token_type {
             TokenType::U16 => {
                 let tokens: Vec<u16> = tokens.iter().map(|&x| x as u16).collect();
                 Box::new(SuffixTable::<Box<[u16]>, Box<[u64]>>::new(tokens, verbose))
@@ -83,28 +77,28 @@ impl InMemoryIndex {
         InMemoryIndex {
             table,
             cache: KneserNeyCache::default(),
-            utype
+            token_type
         }
     }
 
     #[staticmethod]
-    pub fn from_pretrained(path: String, utype: TokenType) -> PyResult<Self> {
+    pub fn from_pretrained(path: String, token_type: TokenType) -> PyResult<Self> {
         // TODO: handle errors here
         let table: SuffixTable = deserialize(&std::fs::read(path)?).unwrap();
         Ok(InMemoryIndex {
             table: Box::new(table),
             cache: KneserNeyCache::default(),
-            utype
+            token_type
         })
     }
 
     #[staticmethod]
-    #[pyo3(signature = (path, verbose=false, token_limit=None, utype=TokenType::U16))]
+    #[pyo3(signature = (path, verbose=false, token_limit=None, token_type=TokenType::U16))]
     pub fn from_token_file(
         path: String,
         verbose: bool,
         token_limit: Option<usize>,
-        utype: TokenType
+        token_type: TokenType
     ) -> PyResult<Self> {
         let mut buffer = Vec::new();
         let mut file = File::open(&path)?;
@@ -117,7 +111,7 @@ impl InMemoryIndex {
             file.read_to_end(&mut buffer)?;
         };
 
-        let table: Box<dyn Table + Send> = match utype {
+        let table: Box<dyn Table + Send + Sync> = match token_type {
             TokenType::U16 => {
                 let tokens = transmute_slice::<u8, u16>(buffer.as_slice());
                 Box::new(SuffixTable::new(tokens, verbose))
@@ -131,7 +125,7 @@ impl InMemoryIndex {
         Ok(InMemoryIndex {
             table,
             cache: KneserNeyCache::default(),
-            utype
+            token_type
         })
     }
 

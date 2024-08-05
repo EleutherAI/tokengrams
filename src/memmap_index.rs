@@ -8,27 +8,48 @@ use crate::mmap_slice::{MmapSlice, MmapSliceMut};
 use crate::par_quicksort::par_sort_unstable_by_key;
 use crate::sample::{KneserNeyCache, Sample};
 use crate::table::SuffixTable;
+use crate::table::Table;
+use crate::token::TokenType;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
+// pub struct MemmapIndex {
+//     table: SuffixTable<MmapSlice<u16>, MmapSlice<u64>>,
+//     cache: KneserNeyCache,
+// }
 pub struct MemmapIndex {
-    table: SuffixTable<MmapSlice<u16>, MmapSlice<u64>>,
+    table: Box<dyn Table + Send + Sync>,
     cache: KneserNeyCache,
+    token_type: TokenType
 }
 
 #[pymethods]
 impl MemmapIndex {
     #[new]
-    pub fn new(_py: Python, text_path: String, table_path: String) -> PyResult<Self> {
+    pub fn new(_py: Python, text_path: String, table_path: String, token_type: TokenType) -> PyResult<Self> {
         let text_file = File::open(&text_path)?;
         let table_file = File::open(&table_path)?;
 
+        let table: Box<dyn Table + Send + Sync> = match token_type {
+            TokenType::U16 => {
+                let table_: SuffixTable<MmapSlice<u16>, MmapSlice<u64>> = SuffixTable::from_parts(
+                    MmapSlice::new(&text_file)?,
+                    MmapSlice::<u64>::new(&table_file)?,
+                );
+                Box::new(table_)
+            },
+            TokenType::U32 => {
+                Box::new(SuffixTable::from_parts(
+                    MmapSlice::new(&text_file)?,
+                    MmapSlice::new(&table_file)?,
+                ))
+            },
+        };
+
         Ok(MemmapIndex {
-            table: SuffixTable::from_parts(
-                MmapSlice::new(&text_file)?,
-                MmapSlice::new(&table_file)?,
-            ),
+            table,
             cache: KneserNeyCache::default(),
+            token_type
         })
     }
 

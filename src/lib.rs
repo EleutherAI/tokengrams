@@ -14,6 +14,7 @@ mod sample;
 mod sharded_memmap_index;
 mod table;
 mod util;
+mod token;
 
 #[pymodule]
 fn tokengrams(m: &Bound<'_, PyModule>) -> PyResult<()> {

@@ -12,7 +12,7 @@ pub struct KneserNeyCache {
     n_delta: HashMap<usize, f64>,
 }
 
-pub trait Sample {
+pub trait Sample: Send + Sync {
     fn count_next_slice(&self, query: &[usize], vocab: Option<usize>) -> Vec<usize>;
 
     /// Generate a frequency map from occurrence frequency to the number of
