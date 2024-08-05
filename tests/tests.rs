@@ -2,7 +2,7 @@ extern crate quickcheck;
 extern crate utf16_literal;
 
 use quickcheck::{QuickCheck, Testable};
-use tokengrams::{SuffixTable, InMemoryIndexU16};
+use tokengrams::{SuffixTable, InMemoryIndexU16, MemmapIndexU16};
 use utf16_literal::utf16;
 
 fn sais(text: &str) -> SuffixTable {
@@ -261,4 +261,41 @@ fn smoothed_probs_empty_query_exists() {
     assert!(residual < 1e-4);
 }
 
+use tokengrams::InMemoryIndexU32;
 
+#[test]
+fn in_memory_index_exists() {
+    let tokens: Vec<u16> = "abcdefghijklmnopqrstuvwxyz".repeat(10).encode_utf16().collect();
+    let index = InMemoryIndexU16::new(tokens, false);
+    
+    assert!(index.is_sorted());
+    assert!(index.contains("abc".encode_utf16().collect()));
+    assert_eq!(index.count("abc".encode_utf16().collect()), 10);
+    
+    let positions = index.positions("abc".encode_utf16().collect());
+    assert_eq!(positions.len(), 10);
+    assert!(positions.contains(&0));
+    assert!(positions.contains(&26));
+}
+
+#[test]
+fn test_in_memory_index_u16_count_next() {
+    let tokens: Vec<u16> = "abcabcabc".encode_utf16().collect();
+    let index = InMemoryIndexU16::new(tokens, false);
+    
+    let counts = index.count_next("ab".encode_utf16().collect(), None);
+    assert_eq!(counts[99], 3); // 'c' is 99 in u16
+}
+
+#[test]
+fn test_in_memory_index_u32_batch_count_next() {
+    let tokens: Vec<u32> = vec![u32::MAX];
+    let index = InMemoryIndexU32::new(tokens, false);
+    
+    let queries = vec!(Vec::new());
+    let counts = &index.batch_count_next(queries, None)[0];
+    let mut expected = vec![0; u32::MAX as usize + 1];
+    expected[u32::MAX as usize] = 1;
+    
+    assert_eq!(*counts, expected);
+}

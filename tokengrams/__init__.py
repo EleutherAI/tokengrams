@@ -1,7 +1,8 @@
 from .tokengrams import (
-    # InMemoryIndex,
-    # MemmapIndex,
-    # ShardedMemmapIndex,
+    InMemoryIndexU16,
+    InMemoryIndexU32,
+    ShardedMemmapIndexU16,
+    ShardedMemmapIndexU32,
     MemmapIndexU16,
     MemmapIndexU32
 )

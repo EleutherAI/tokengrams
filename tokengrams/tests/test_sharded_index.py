@@ -1,7 +1,7 @@
 from itertools import pairwise
 from tempfile import NamedTemporaryFile
 import random
-from tokengrams import MemmapIndex, ShardedMemmapIndex
+from tokengrams.src.index import MemmapIndex, ShardedMemmapIndex
 
 import numpy as np
 

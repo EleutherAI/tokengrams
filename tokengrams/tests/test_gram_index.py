@@ -1,7 +1,7 @@
 from itertools import pairwise
 from tempfile import NamedTemporaryFile
 
-from tokengrams import InMemoryIndex, MemmapIndex
+from tokengrams.src.index import InMemoryIndex, MemmapIndex
 from hypothesis import given, strategies as st
 
 import numpy as np

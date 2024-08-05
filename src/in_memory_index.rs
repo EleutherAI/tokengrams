@@ -11,19 +11,19 @@ use crate::util::transmute_slice;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
 macro_rules! create_in_memory_interface {
-    ($name: ident, $type: ident) => {
+    ($typed_in_memory_index: ident, $type: ident) => {
         #[pyclass]
-        pub struct $name {
+        pub struct $typed_in_memory_index {
             table: SuffixTable<Box<[$type]>, Box<[u64]>>,
             cache: KneserNeyCache,
         }
 
         #[pymethods]
-        impl $name {
+        impl $typed_in_memory_index {
             #[new]
             #[pyo3(signature = (tokens, verbose=false))]
             pub fn new_py(_py: Python, tokens: Vec<$type>, verbose: bool) -> Self {
-                $name {
+                $typed_in_memory_index {
                     table: SuffixTable::<Box<[$type]>>::new(tokens, verbose),
                     cache: KneserNeyCache::default(),
                 }
@@ -32,7 +32,7 @@ macro_rules! create_in_memory_interface {
             #[staticmethod]
             pub fn from_pretrained(path: String) -> PyResult<Self> {
                 let table: SuffixTable<Box<[$type]>, Box<[u64]>> = deserialize(&std::fs::read(path)?).unwrap();
-                Ok($name {
+                Ok($typed_in_memory_index {
                     table,
                     cache: KneserNeyCache::default(),
                 })
@@ -55,7 +55,7 @@ macro_rules! create_in_memory_interface {
                     file.read_to_end(&mut buffer)?;
                 };
 
-                Ok($name {
+                Ok($typed_in_memory_index {
                     table: SuffixTable::new(transmute_slice(buffer.as_slice()), verbose),
                     cache: KneserNeyCache::default(),
                 })
@@ -136,7 +136,7 @@ macro_rules! create_in_memory_interface {
             }
         }
 
-        impl Sample<$type> for $name {
+        impl Sample<$type> for $typed_in_memory_index {
             fn get_cache(&self) -> &KneserNeyCache {
                 &self.cache
             }
@@ -154,9 +154,9 @@ macro_rules! create_in_memory_interface {
             }
         }
 
-        impl $name {
+        impl $typed_in_memory_index {
             pub fn new(tokens: Vec<$type>, verbose: bool) -> Self {
-                $name {
+                $typed_in_memory_index {
                     table: SuffixTable::new(tokens, verbose),
                     cache: KneserNeyCache::default(),
                 }

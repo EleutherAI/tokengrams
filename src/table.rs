@@ -52,6 +52,7 @@ where
     E: Token,
     T: Deref<Target = [E]> + Sync,
     U: Deref<Target = [u64]> + Sync,
+    <E as TryInto<usize>>::Error: Debug, 
 {
     pub fn from_parts(text: T, table: U) -> Self {
         SuffixTable { text, table }
@@ -241,7 +242,8 @@ where
         // could do this in python class and then we can take an unchecked usize everywhere
         let vocab_size: usize = match vocab {
             Some(size) => size,
-            None => u16::MAX as usize + 1,
+            None => <E as TryInto<usize>>::try_into(E::MAX)
+                    .expect("Failed to convert E::MAX to usize") + 1
         };
         let mut counts: Vec<usize> = vec![0; vocab_size];
 

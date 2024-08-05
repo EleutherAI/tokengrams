@@ -1,12 +1,12 @@
 from itertools import pairwise
 from tempfile import NamedTemporaryFile
 import random
-from tokengrams import MemmapIndexU16, MemmapIndexU32
+from tokengrams.src.index import MemmapIndex
 
 import numpy as np
 
 
-def check_index(index: MemmapIndexU32 | MemmapIndexU16, tokens: list[int]):
+def check_index(index: MemmapIndex, tokens: list[int]):
     assert index.is_sorted()
 
     # Check unigram counts
@@ -32,8 +32,8 @@ def test_typed_index():
         token_file_u32.write(np.array(tokens, dtype=np.uint32).tobytes())
         token_file_u32.flush()
         
-        first = MemmapIndexU16.build(token_file_u16.name, index_file_1.name, False)
-        second = MemmapIndexU32.build(token_file_u32.name, index_file_2.name, False)
+        first = MemmapIndex.build(token_file_u16.name, index_file_1.name, False)
+        second = MemmapIndex.build(token_file_u32.name, index_file_2.name, False, vocab=2**16)
 
         check_index(first, tokens)
         check_index(second, tokens)
