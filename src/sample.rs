@@ -5,7 +5,6 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Mul;
-use crate::table::Token;
 
 #[derive(Clone, Deserialize, Serialize, Default)]
 pub struct KneserNeyCache {
@@ -13,8 +12,8 @@ pub struct KneserNeyCache {
     n_delta: HashMap<usize, f64>,
 }
 
-pub trait Sample<T: Token>: Send + Sync {
-    fn count_next_slice(&self, query: &[T], vocab: Option<usize>) -> Vec<usize>;
+pub trait Sample {
+    fn count_next_slice(&self, query: &[usize], vocab: Option<usize>) -> Vec<usize>;
 
     /// Generate a frequency map from occurrence frequency to the number of
     /// unique n-grams in the corpus with that frequency.
@@ -27,12 +26,12 @@ pub trait Sample<T: Token>: Send + Sync {
     /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
     fn sample_unsmoothed_rs(
         &self,
-        query: &[T],
+        query: &[usize],
         n: usize,
         k: usize,
         num_samples: usize,
         vocab: Option<usize>,
-    ) -> Result<Vec<Vec<T>>> {
+    ) -> Result<Vec<Vec<usize>>> {
         (0..num_samples)
             .into_par_iter()
             .map(|_| self.sample_rs(query, n, k, vocab))
@@ -40,7 +39,7 @@ pub trait Sample<T: Token>: Send + Sync {
     }
 
     //// Autoregressively sample a sequence of k characters from an unsmoothed n-gram model."""
-    fn sample_rs(&self, query: &[T], n: usize, k: usize, vocab: Option<usize>) -> Result<Vec<T>> {
+    fn sample_rs(&self, query: &[usize], n: usize, k: usize, vocab: Option<usize>) -> Result<Vec<usize>> {
         let mut rng = thread_rng();
         let mut sequence = Vec::from(query);
 
@@ -51,7 +50,7 @@ pub trait Sample<T: Token>: Send + Sync {
 
             let counts = self.count_next_slice(prev, vocab);
             let dist = WeightedIndex::new(&counts)?;
-            let sampled_index: T = dist.sample(&mut rng).try_into().unwrap_or_else(|_| panic!("Sampled token > usize::MAX"));
+            let sampled_index: usize = dist.sample(&mut rng).try_into().unwrap_or_else(|_| panic!("Sampled token > usize::MAX"));
             
             sequence.push(sampled_index);
         }
@@ -61,7 +60,7 @@ pub trait Sample<T: Token>: Send + Sync {
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    fn get_smoothed_probs_rs(&mut self, query: &[T], vocab: Option<usize>) -> Vec<f64> {
+    fn get_smoothed_probs_rs(&mut self, query: &[usize], vocab: Option<usize>) -> Vec<f64> {
         self.estimate_deltas_rs(1);
         self.compute_smoothed_unigram_probs(vocab);
         self.smoothed_probs_rs(query, vocab)
@@ -71,7 +70,7 @@ pub trait Sample<T: Token>: Send + Sync {
     /// tokens in the query.
     fn batch_get_smoothed_probs_rs(
         &mut self,
-        queries: &[Vec<T>],
+        queries: &[Vec<usize>],
         vocab: Option<usize>,
     ) -> Vec<Vec<f64>> {
         self.estimate_deltas_rs(1);
@@ -86,12 +85,12 @@ pub trait Sample<T: Token>: Send + Sync {
     /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
     fn sample_smoothed_rs(
         &mut self,
-        query: &[T],
+        query: &[usize],
         n: usize,
         k: usize,
         num_samples: usize,
         vocab: Option<usize>,
-    ) -> Result<Vec<Vec<T>>> {
+    ) -> Result<Vec<Vec<usize>>> {
         self.estimate_deltas_rs(1);
         self.compute_smoothed_unigram_probs(vocab);
 
@@ -105,7 +104,7 @@ pub trait Sample<T: Token>: Send + Sync {
     /// continuation using absolute discounting as described in
     /// "On structuring probabilistic dependences in stochastic language modelling", page 25,
     /// doi:10.1006/csla.1994.1001
-    fn smoothed_probs_rs(&self, query: &[T], vocab: Option<usize>) -> Vec<f64> {
+    fn smoothed_probs_rs(&self, query: &[usize], vocab: Option<usize>) -> Vec<f64> {
         let p_continuations = if query.is_empty() {
             self.get_cached_smoothed_unigram_probs().to_vec()
         } else {
@@ -149,7 +148,7 @@ pub trait Sample<T: Token>: Send + Sync {
     }
 
     /// Autoregressively sample k characters from a Kneser-Ney smoothed n-gram model.
-    fn kn_sample(&self, query: &[T], n: usize, k: usize, vocab: Option<usize>) -> Result<Vec<T>> {
+    fn kn_sample(&self, query: &[usize], n: usize, k: usize, vocab: Option<usize>) -> Result<Vec<usize>> {
         let mut rng = thread_rng();
         let mut sequence = Vec::from(query);
 
@@ -158,7 +157,7 @@ pub trait Sample<T: Token>: Send + Sync {
             let prev = &sequence[start..];
             let probs = self.smoothed_probs_rs(prev, vocab);
             let dist = WeightedIndex::new(&probs)?;
-            let sampled_index: T = dist.sample(&mut rng).try_into().unwrap_or_else(|_| panic!("Sampled token > usize::MAX"));
+            let sampled_index: usize = dist.sample(&mut rng).try_into().unwrap_or_else(|_| panic!("Sampled token > usize::MAX"));
 
             sequence.push(sampled_index);
         }

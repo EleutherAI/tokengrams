@@ -21,6 +21,7 @@ rand = "0.8.5"
 rayon = "1.10.0"
 rayon-core = "1.12.1"
 serde = { version = "1.0.197", features = ["derive"] }
+typetag = "0.2.17"
 utf16_literal = "0.2.1"
 
 [[test]]
