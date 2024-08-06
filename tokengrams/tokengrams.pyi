@@ -1,11 +1,11 @@
 class InMemoryIndex:
     """An n-gram index."""
 
-    def __init__(self, tokens: list[int], verbose: bool) -> None:
+    def __init__(self, tokens: list[int], vocab: int = 2**16, verbose: bool = False) -> None:
         ...
     
     @staticmethod
-    def from_token_file(path: str, verbose: bool, token_limit: int | None) -> "InMemoryIndex":
+    def from_token_file(path: str, verbose: bool, token_limit: int | None, vocab: int = 2**16) -> "InMemoryIndex":
         """Construct a `InMemoryIndex` from a file containing raw little-endian tokens."""
 
     def is_sorted(self) -> bool:
@@ -52,11 +52,11 @@ class InMemoryIndex:
 class MemmapIndex:
     """An n-gram index backed by a memory-mapped file."""
 
-    def __init__(self, token_file: str, index_file: str) -> None:
+    def __init__(self, token_file: str, index_file: str, vocab: int = 2**16) -> None:
         """Load a prebuilt memory-mapped index from a pair of files."""
 
     @staticmethod
-    def build(token_file: str, index_file: str, verbose: bool) -> "MemmapIndex":
+    def build(token_file: str, index_file: str, vocab: int = 2**16, verbose: bool = False) -> "MemmapIndex":
         """Build a memory-mapped index from a token file."""
 
     def is_sorted(self) -> bool:
@@ -72,26 +72,26 @@ class MemmapIndex:
     def positions(self, query: list[int]) -> list[int]:
         """Returns an unordered list of positions where `query` starts in `text`."""
 
-    def count_next(self, query: list[int], vocab: int | None = None) -> list[int]:
+    def count_next(self, query: list[int]) -> list[int]:
         """Count the occurrences of each token directly following `query`."""
 
-    def batch_count_next(self, queries: list[list[int]], vocab: int | None = None) -> list[list[int]]:
+    def batch_count_next(self, queries: list[list[int]]) -> list[list[int]]:
         """Count the occurrences of each token that directly follows each sequence in `queries`."""
 
-    def sample_smoothed(self, query: list[int], n: int, k: int, num_samples: int, vocab: int | None = None) -> list[list[int]]:
+    def sample_smoothed(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
         """Autoregressively samples num_samples of k characters each from Kneser-Ney smoothed conditional 
         distributions based on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are 
         fewer than (n - 1) characters all available characters are used."""
    
-    def sample_unsmoothed(self, query: list[int], n: int, k: int, num_samples: int, vocab: int | None = None) -> list[list[int]]:
+    def sample_unsmoothed(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
         """Autoregressively samples num_samples of k characters each from conditional distributions based 
         on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
         (n - 1) characters all available characters are used."""
 
-    def smoothed_probs(self, query: list[int], vocab: int | None = None) -> list[float]:
+    def smoothed_probs(self, query: list[int]) -> list[float]:
         """Compute interpolated Kneser-Ney smoothed token probability distribution using all previous tokens in the query."""
 
-    def batch_smoothed_probs(self, queries: list[list[int]], vocab: int | None = None) -> list[list[float]]:
+    def batch_smoothed_probs(self, queries: list[list[int]]) -> list[list[float]]:
         """Compute interpolated Kneser-Ney smoothed token probability distributions using all previous tokens in each query."""
     
     def estimate_deltas(self, n: int):
@@ -103,11 +103,11 @@ class MemmapIndex:
 class ShardedMemmapIndex:
     """An n-gram index backed by several memory-mapped files."""
 
-    def __init__(self, files: list[tuple[str, str]]) -> None:
+    def __init__(self, files: list[tuple[str, str]], vocab: int = 2**16) -> None:
         """Load a prebuilt memory-mapped index from a list of pairs of files in form (token_file, index_file)."""
 
     @staticmethod
-    def build(token_file: str, index_file: str, verbose: bool) -> "ShardedMemmapIndex":
+    def build(token_file: str, index_file: str, vocab: int = 2**16, verbose: bool = False) -> "ShardedMemmapIndex":
         """Build a memory-mapped index from a token file."""
 
     def is_sorted(self) -> bool:
@@ -120,26 +120,26 @@ class ShardedMemmapIndex:
     def count(self, query: list[int]) -> int:
         """Count the number of occurrences of `query` in the index."""
 
-    def count_next(self, query: list[int], vocab: int | None = None) -> list[int]:
+    def count_next(self, query: list[int]) -> list[int]:
         """Count the occurrences of each token directly following `query`."""
 
-    def batch_count_next(self, queries: list[list[int]], vocab: int | None = None) -> list[list[int]]:
+    def batch_count_next(self, queries: list[list[int]]) -> list[list[int]]:
         """Count the occurrences of each token that directly follows each sequence in `queries`."""
 
-    def sample_smoothed(self, query: list[int], n: int, k: int, num_samples: int, vocab: int | None = None) -> list[list[int]]:
+    def sample_smoothed(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
         """Autoregressively samples num_samples of k characters each from Kneser-Ney smoothed conditional 
         distributions based on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are 
         fewer than (n - 1) characters all available characters are used."""
    
-    def sample_unsmoothed(self, query: list[int], n: int, k: int, num_samples: int, vocab: int | None = None) -> list[list[int]]:
+    def sample_unsmoothed(self, query: list[int], n: int, k: int, num_samples: int) -> list[list[int]]:
         """Autoregressively samples num_samples of k characters each from conditional distributions based 
         on the previous (n - 1) characters (n-gram prefix) in the sequence. If there are fewer than 
         (n - 1) characters all available characters are used."""
 
-    def smoothed_probs(self, query: list[int], vocab: int | None = None) -> list[float]:
+    def smoothed_probs(self, query: list[int]) -> list[float]:
         """Compute interpolated Kneser-Ney smoothed token probability distribution using all previous tokens in the query."""
 
-    def batch_smoothed_probs(self, queries: list[list[int]], vocab: int | None = None) -> list[list[float]]:
+    def batch_smoothed_probs(self, queries: list[list[int]]) -> list[list[float]]:
         """Compute interpolated Kneser-Ney smoothed token probability distributions using all previous tokens in each query."""
     
     def estimate_deltas(self, n: int):

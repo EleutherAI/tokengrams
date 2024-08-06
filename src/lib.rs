@@ -2,7 +2,7 @@ pub mod mmap_slice;
 pub use in_memory_index::InMemoryIndex;
 pub use memmap_index::MemmapIndex;
 pub use sharded_memmap_index::ShardedMemmapIndex;
-pub use table::SuffixTable;
+pub use table::{SuffixTable, Table};
 
 /// Python bindings
 use pyo3::prelude::*;

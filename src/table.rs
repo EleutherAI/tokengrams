@@ -1,258 +1,12 @@
 extern crate utf16_literal;
 
-use crate::par_quicksort::par_sort_unstable_by_key;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{fmt, ops::Deref, u64};
-use funty::Unsigned;
-use std::fmt::Debug;
 
-pub trait Token: Unsigned + Copy + Sync + Debug + TryInto<usize> + TryFrom<usize> + 'static {}
-impl Token for u16 {}
-impl Token for u32 {}
-
-pub trait Table: Send {
-    /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
-    fn is_sorted(&self) -> bool;
-
-    /// Returns true if and only if `query` is in text.
-    ///
-    /// This runs in `O(mlogn)` time, where `m == query.len()` and
-    /// `n == self.len()`. (As far as this author knows, this is the best known
-    /// bound for a plain suffix table.)
-    ///
-    /// You should prefer this over `positions` when you only need to test
-    /// existence (because it is faster).
-    ///
-    /// # Example
-    ///
-    /// Build a suffix array of some text and test existence of a substring:
-    ///
-    /// ```rust
-    /// use tokengrams::SuffixTable;
-    /// use utf16_literal::utf16;
-    ///
-    /// let sa = SuffixTable::new(utf16!("The quick brown fox.").to_vec(), false);
-    /// assert!(sa.contains(utf16!("quick")));
-    /// ```
-    #[allow(dead_code)]
-    fn contains(&self, query: &[usize]) -> bool;
-
-    /// Returns an unordered list of positions where `query` starts in `text`.
-    ///
-    /// This runs in `O(mlogn)` time, where `m == query.len()` and
-    /// `n == self.len()`. (As far as this author knows, this is the best known
-    /// bound for a plain suffix table.)
-    ///
-    /// Positions are byte indices into `text`.
-    ///
-    /// If you just need to test existence, then use `contains` since it is
-    /// faster.
-    ///
-    /// # Example
-    ///
-    /// Build a suffix array of some text and find all occurrences of a
-    /// substring:
-    ///
-    /// ```rust
-    /// use tokengrams::SuffixTable;
-    /// use utf16_literal::utf16;
-    ///
-    /// let sa = SuffixTable::new(utf16!("The quick brown fox was very quick.").to_vec(), false);
-    /// assert_eq!(sa.positions(utf16!("quick")), &[4, 29]);
-    /// ```
-    #[allow(dead_code)]
-    fn positions(&self, query: &[usize]) -> &[u64];
-
-    // Count occurrences of each token directly following the query sequence.
-    fn count_next(&self, query: &[usize], vocab: Option<usize>) -> Vec<usize>;
-
-    fn batch_count_next(&self, queries: &[Vec<usize>], vocab: Option<usize>) -> Vec<Vec<usize>>;
-
-    // For a given n, produce a map from an occurrence count to the number of unique n-grams with that occurrence count.
-    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize>;
-}
-
-// macro_rules! impl_table_for_suffix_table {
-//     ($t:ty, $wrapper:ty) => {
-//         #[typetag::serialize]
-//         impl Table for SuffixTable<Box<[$t]>, Box<[u64]>> {
-//             fn is_sorted(&self) -> bool {
-//                 self.table
-//                     .par_windows(2)
-//                     .all(|pair| self.text[pair[0] as usize..] <= self.text[pair[1] as usize..])
-//             }
-
-//             fn contains(&self, query: &[usize]) -> bool {
-//                 let query = query.iter().map(|&x| x as $t).collect::<Vec<$t>>();
-//                 !query.is_empty()
-//                     && self
-//                         .table
-//                         .binary_search_by(|&sufi| {
-//                             self.text[sufi as usize..]
-//                                 .iter()
-//                                 .take(query.len())
-//                                 .cmp(query.iter())
-//                         })
-//                         .is_ok()
-//             }
-
-//             fn positions(&self, query: &[usize]) -> &[u64] {
-//                 let query = query.iter().map(|&x| x as $t).collect::<Vec<$t>>();
-//                 if self.text.is_empty()
-//                     || query.is_empty()
-//                     || (query.as_slice() < self.suffix(0) && !self.suffix(0).starts_with(&query))
-//                     || query.as_slice() > self.suffix(self.len() - 1)
-//                 {
-//                     return &[];
-//                 }
-
-//                 let start = binary_search(&self.table, |&sufi| query.as_slice() <= &self.text[sufi as usize..]);
-//                 let end = start
-//                     + binary_search(&self.table[start..], |&sufi| {
-//                         !self.text[sufi as usize..].starts_with(&query)
-//                     });
-
-//                 if start > end {
-//                     &[]
-//                 } else {
-//                     // This cast is not ideal, but necessary to match the trait signature
-//                     unsafe { std::mem::transmute(&self.table[start..end]) }
-//                 }
-//             }
-
-//             fn count_next(&self, query: &[usize], vocab: Option<usize>) -> Vec<usize> {
-//                 let query = query.iter().map(|&x| x as $t).collect::<Vec<$t>>();
-//                 let vocab_size: usize = match vocab {
-//                     Some(size) => size,
-//                     None => <$t>::MAX as usize + 1,
-//                 };
-//                 let mut counts: Vec<usize> = vec![0; vocab_size];
-
-//                 let (range_start, range_end) = self.boundaries(&query);
-//                 self.recurse_count_next(&mut counts, &query, range_start, range_end);
-//                 counts
-//             }
-
-//             // Count occurrences of each token directly following the query sequence.
-//             fn batch_count_next(&self, queries: &[Vec<usize>], vocab: Option<usize>) -> Vec<Vec<usize>> {
-//                 // let queries = queries.iter().map(|&x| x as $t).collect::<Vec<$t>>();
-
-//                 queries
-//                     .into_par_iter()
-//                     .map(|query| self.count_next(query.as_slice(), vocab))
-//                     .collect()
-//             }
-
-//             fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
-//                 let mut count_map = HashMap::new();
-//                 let (range_start, range_end) = self.boundaries(&[]);
-//                 self.recurse_count_ngrams(range_start, range_end, 1, &[], n, &mut count_map);
-//                 count_map
-//             }
-//         }
-//     };
-// }
-
-// macro_rules! impl_mmap_table_for_suffix_table {
-//     ($t:ty) => {
-
-//         impl<T, U, E> SuffixTable<T, U>
-//         where
-//             E: Token,
-//             T: Deref<Target = [E]> + Sync,
-//             U: Deref<Target = [u64]> + Sync,
-
-
-//         #[typetag::serialize]
-//         impl Table for SuffixTable<T, U>
-//         where T: Deref<Target = [E]> + Sync,
-//               U: Deref<Target = [u64]> + Sync,
-//               E: Token
-//             {
-//             fn is_sorted(&self) -> bool {
-//                 self.table
-//                     .par_windows(2)
-//                     .all(|pair| self.text[pair[0] as usize..] <= self.text[pair[1] as usize..])
-//             }
-
-//             fn contains(&self, query: &[usize]) -> bool {
-//                 let query = query.iter().map(|&x| x as $t).collect::<Vec<$t>>();
-//                 !query.is_empty()
-//                     && self
-//                         .table
-//                         .binary_search_by(|&sufi| {
-//                             self.text[sufi as usize..]
-//                                 .iter()
-//                                 .take(query.len())
-//                                 .cmp(query.iter())
-//                         })
-//                         .is_ok()
-//             }
-
-//             fn positions(&self, query: &[usize]) -> &[u64] {
-//                 let query = query.iter().map(|&x| x as $t).collect::<Vec<$t>>();
-//                 if self.text.is_empty()
-//                     || query.is_empty()
-//                     || (query.as_slice() < self.suffix(0) && !self.suffix(0).starts_with(&query))
-//                     || query.as_slice() > self.suffix(self.len() - 1)
-//                 {
-//                     return &[];
-//                 }
-
-//                 let start = binary_search(&self.table, |&sufi| query.as_slice() <= &self.text[sufi as usize..]);
-//                 let end = start
-//                     + binary_search(&self.table[start..], |&sufi| {
-//                         !self.text[sufi as usize..].starts_with(&query)
-//                     });
-
-//                 if start > end {
-//                     &[]
-//                 } else {
-//                     // This cast is not ideal, but necessary to match the trait signature
-//                     unsafe { std::mem::transmute(&self.table[start..end]) }
-//                 }
-//             }
-
-//             fn count_next(&self, query: &[usize], vocab: Option<usize>) -> Vec<usize> {
-//                 let query = query.iter().map(|&x| x as $t).collect::<Vec<$t>>();
-//                 let vocab_size: usize = match vocab {
-//                     Some(size) => size,
-//                     None => <$t>::MAX as usize + 1,
-//                 };
-//                 let mut counts: Vec<usize> = vec![0; vocab_size];
-
-//                 let (range_start, range_end) = self.boundaries(&query);
-//                 self.recurse_count_next(&mut counts, &query, range_start, range_end);
-//                 counts
-//             }
-
-//             // Count occurrences of each token directly following the query sequence.
-//             fn batch_count_next(&self, queries: &[Vec<usize>], vocab: Option<usize>) -> Vec<Vec<usize>> {
-//                 // let queries = queries.iter().map(|&x| x as $t).collect::<Vec<$t>>();
-
-//                 queries
-//                     .into_par_iter()
-//                     .map(|query| self.count_next(query.as_slice(), vocab))
-//                     .collect()
-//             }
-
-//             fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
-//                 let mut count_map = HashMap::new();
-//                 let (range_start, range_end) = self.boundaries(&[]);
-//                 self.recurse_count_ngrams(range_start, range_end, 1, &[], n, &mut count_map);
-//                 count_map
-//             }
-//         }
-//     };
-// }
-
-// Use the macro to implement Table for u16 and u32 variants
-// impl_table_for_suffix_table!(u16, Box);
-// impl_table_for_suffix_table!(u32, Box);
-// impl_table_for_suffix_table!(u16, MmapSlice);
-// impl_table_for_suffix_table!(u32, MmapSlice);
+use crate::token::Token;
+use crate::par_quicksort::par_sort_unstable_by_key;
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 /// The table supports n-gram statistics computation and language modeling over text corpora.
@@ -260,13 +14,14 @@ pub trait Table: Send {
 pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
     text: T,
     table: U,
+    vocab: usize
 }
 
-/// Methods for vanilla in-memory suffix tables
+/// Method for vanilla in-memory suffix tables
 impl<T: Token> SuffixTable<Box<[T]>, Box<[u64]>> {
     /// Creates a new suffix table for `text` in `O(n log n)` time and `O(n)`
     /// space.
-    pub fn new<S>(src: S, verbose: bool) -> Self
+    pub fn new<S>(src: S, vocab: Option<usize>, verbose: bool) -> Self
     where
         S: Into<Box<[T]>>,
     {
@@ -282,9 +37,12 @@ impl<T: Token> SuffixTable<Box<[T]>, Box<[u64]>> {
         let mut table: Vec<_> = (0..text.len() as u64).collect();
         par_sort_unstable_by_key(&mut table[..], |&i| &text[i as usize..], verbose);
 
+        let vocab = vocab.unwrap_or(u16::MAX as usize + 1);
+
         SuffixTable {
             text,
             table: table.into(),
+            vocab
         }
     }
 }
@@ -295,8 +53,9 @@ where
     T: Deref<Target = [E]> + Sync,
     U: Deref<Target = [u64]> + Sync,
 {
-    pub fn from_parts(text: T, table: U) -> Self {
-        SuffixTable { text, table }
+    pub fn from_parts(text: T, table: U, vocab: Option<usize>) -> Self {
+        let vocab = vocab.unwrap_or(u16::MAX as usize + 1);
+        SuffixTable { text, table, vocab }
     }
 
     /// Consumes the suffix table and returns the underlying text and table.
@@ -351,7 +110,7 @@ where
     /// use tokengrams::SuffixTable;
     /// use utf16_literal::utf16;
     ///
-    /// let sa = SuffixTable::new(utf16!("The quick brown fox.").to_vec(), false);
+    /// let sa = SuffixTable::new(utf16!("The quick brown fox.").to_vec(), None, false);
     /// assert!(sa.contains(utf16!("quick")));
     /// ```
     #[allow(dead_code)]
@@ -388,42 +147,42 @@ where
     /// use tokengrams::SuffixTable;
     /// use utf16_literal::utf16;
     ///
-    /// let sa = SuffixTable::new(utf16!("The quick brown fox was very quick.").to_vec(), false);
+    /// let sa = SuffixTable::new(utf16!("The quick brown fox was very quick.").to_vec(), None, false);
     /// assert_eq!(sa.positions(utf16!("quick")), &[4, 29]);
     /// ```
-    // #[allow(dead_code)]
-    // pub fn positions(&self, query: &[E]) -> &[u64] {
-    //     // We can quickly decide whether the query won't match at all if
-    //     // it's outside the range of suffixes.
-    //     if self.text.is_empty()
-    //         || query.is_empty()
-    //         || (query < self.suffix(0) && !self.suffix(0).starts_with(query))
-    //         || query > self.suffix(self.len() - 1)
-    //     {
-    //         return &[];
-    //     }
+    #[allow(dead_code)]
+    pub fn positions(&self, query: &[E]) -> &[u64] {
+        // We can quickly decide whether the query won't match at all if
+        // it's outside the range of suffixes.
+        if self.text.is_empty()
+            || query.is_empty()
+            || (query < self.suffix(0) && !self.suffix(0).starts_with(query))
+            || query > self.suffix(self.len() - 1)
+        {
+            return &[];
+        }
 
-    //     // The below is pretty close to the algorithm on Wikipedia:
-    //     //
-    //     //     http://en.wikipedia.org/wiki/Suffix_array#Applications
-    //     //
-    //     // The key difference is that after we find the start index, we look
-    //     // for the end by finding the first occurrence that doesn't start
-    //     // with `query`. That becomes our upper bound.
-    //     let start = binary_search(&self.table, |&sufi| query <= &self.text[sufi as usize..]);
-    //     let end = start
-    //         + binary_search(&self.table[start..], |&sufi| {
-    //             !self.text[sufi as usize..].starts_with(query)
-    //         });
+        // The below is pretty close to the algorithm on Wikipedia:
+        //
+        //     http://en.wikipedia.org/wiki/Suffix_array#Applications
+        //
+        // The key difference is that after we find the start index, we look
+        // for the end by finding the first occurrence that doesn't start
+        // with `query`. That becomes our upper bound.
+        let start = binary_search(&self.table, |&sufi| query <= &self.text[sufi as usize..]);
+        let end = start
+            + binary_search(&self.table[start..], |&sufi| {
+                !self.text[sufi as usize..].starts_with(query)
+            });
 
-    //     // Whoops. If start is somehow greater than end, then we've got
-    //     // nothing.
-    //     if start > end {
-    //         &[]
-    //     } else {
-    //         &self.table[start..end]
-    //     }
-    // }
+        // Whoops. If start is somehow greater than end, then we've got
+        // nothing.
+        if start > end {
+            &[]
+        } else {
+            &self.table[start..end]
+        }
+    }
 
     /// Determine start and end `table` indices of items that start with `query`.
     fn boundaries(&self, query: &[E]) -> (usize, usize) {
@@ -477,20 +236,14 @@ where
     }
 
     // Count occurrences of each token directly following the query sequence.
-    // pub fn count_next(&self, query: &[E], vocab: Option<usize>) -> Vec<usize> {
-    //     // TODO u32 max
-    //     // maybe better to provide max vocab then truncate and log if max vocab is greater than u32::max
-    //     // could do this in python class and then we can take an unchecked usize everywhere
-    //     let vocab_size: usize = match vocab {
-    //         Some(size) => size,
-    //         None => u16::MAX as usize + 1,
-    //     };
-    //     let mut counts: Vec<usize> = vec![0; vocab_size];
+    pub fn count_next(&self, query: &[E]) -> Vec<usize> {
+        let mut counts: Vec<usize> = vec![0; self.vocab];
 
-    //     let (range_start, range_end) = self.boundaries(query);
-    //     self.recurse_count_next(&mut counts, query, range_start, range_end);
-    //     counts
-    // }
+        let (range_start, range_end) = self.boundaries(query);
+        self.recurse_count_next(&mut counts, query, range_start, range_end);
+        println!("{:?}", counts[97]);
+        counts
+    }
 
     // count_next helper method.
     fn recurse_count_next(
@@ -517,8 +270,8 @@ where
         let (token_start, token_end) =
             self.range_boundaries(&suffix[..query.len() + 1], search_start, search_end);
         
-        let index: usize = suffix[query.len()].try_into().unwrap_or_else(|_| panic!("Token > usize::MAX"));
-        counts[index] = token_end - token_start;
+        let index = suffix[query.len()];
+        counts[index.as_usize()] = token_end - token_start;
 
         if search_start < token_start {
             self.recurse_count_next(counts, query, search_start, token_start);
@@ -576,89 +329,129 @@ where
     }
 
     // For a given n, produce a map from an occurrence count to the number of unique n-grams with that occurrence count.
-    // pub fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
-    //     let mut count_map = HashMap::new();
-    //     let (range_start, range_end) = self.boundaries(&[]);
-    //     self.recurse_count_ngrams(range_start, range_end, 1, &[], n, &mut count_map);
-    //     count_map
-    // }
-}
-
-#[typetag::serialize]
-impl<T, U, E> Table for SuffixTable<T, U>
-where
-    T: Deref<Target = [E]> + Sync + Send + 'static + Serialize,
-    U: Deref<Target = [u64]> + Sync + Send + 'static + Serialize,
-    E: Token,
-{
-    fn is_sorted(&self) -> bool {
-        self.table
-            .par_windows(2)
-            .all(|pair| self.text[pair[0] as usize..] <= self.text[pair[1] as usize..])
-    }
-
-    fn contains(&self, query: &[usize]) -> bool {
-        let query = query.iter().map(|&x| x as E).collect::<Vec<E>>();
-        !query.is_empty()
-            && self
-                .table
-                .binary_search_by(|&sufi| {
-                    self.text[sufi as usize..]
-                        .iter()
-                        .take(query.len())
-                        .cmp(query.iter())
-                })
-                .is_ok()
-    }
-
-    fn positions(&self, query: &[usize]) -> &[u64] {
-        let query = query.iter().map(|&x| x as E).collect::<Vec<E>>();
-        if self.text.is_empty()
-            || query.is_empty()
-            || (query.as_slice() < self.suffix(0) && !self.suffix(0).starts_with(&query))
-            || query.as_slice() > self.suffix(self.len() - 1)
-        {
-            return &[];
-        }
-
-        let start = binary_search(&self.table, |&sufi| query.as_slice() <= &self.text[sufi as usize..]);
-        let end = start
-            + binary_search(&self.table[start..], |&sufi| {
-                !self.text[sufi as usize..].starts_with(&query)
-            });
-
-        if start > end {
-            &[]
-        } else {
-            &self.table[start..end]
-        }
-    }
-
-    fn count_next(&self, query: &[usize], vocab: Option<usize>) -> Vec<usize> {
-        let query = query.iter().map(|&x| x as E).collect::<Vec<E>>();
-        let vocab_size: usize = match vocab {
-            Some(size) => size,
-            None => E::MAX as usize + 1,
-        };
-        let mut counts: Vec<usize> = vec![0; vocab_size];
-
-        let (range_start, range_end) = self.boundaries(&query);
-        self.recurse_count_next(&mut counts, &query, range_start, range_end);
-        counts
-    }
-
-    fn batch_count_next(&self, queries: &[Vec<usize>], vocab: Option<usize>) -> Vec<Vec<usize>> {
-        queries
-            .into_par_iter()
-            .map(|query| self.count_next(query.as_slice(), vocab))
-            .collect()
-    }
-
-    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
+    pub fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
         let mut count_map = HashMap::new();
         let (range_start, range_end) = self.boundaries(&[]);
         self.recurse_count_ngrams(range_start, range_end, 1, &[], n, &mut count_map);
         count_map
+    }
+}
+
+// Non-generic interface for index pyclass, using usize instead of E.
+pub trait Table {
+    /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
+    fn is_sorted(&self) -> bool;
+
+    /// Returns true if and only if `query` is in text.
+    ///
+    /// This runs in `O(mlogn)` time, where `m == query.len()` and
+    /// `n == self.len()`. (As far as this author knows, this is the best known
+    /// bound for a plain suffix table.)
+    ///
+    /// You should prefer this over `positions` when you only need to test
+    /// existence (because it is faster).
+    ///
+    /// # Example
+    ///
+    /// Build a suffix array of some text and test existence of a substring:
+    ///
+    /// ```rust
+    /// use tokengrams::SuffixTable;
+    /// use utf16_literal::utf16;
+    ///
+    /// let sa = SuffixTable::new(utf16!("The quick brown fox.").to_vec(), None, false);
+    /// assert!(sa.contains(utf16!("quick")));
+    /// ```
+    #[allow(dead_code)]
+    fn contains(&self, query: &[usize]) -> bool;
+
+    /// Returns an unordered list of positions where `query` starts in `text`.
+    ///
+    /// This runs in `O(mlogn)` time, where `m == query.len()` and
+    /// `n == self.len()`. (As far as this author knows, this is the best known
+    /// bound for a plain suffix table.)
+    ///
+    /// Positions are byte indices into `text`.
+    ///
+    /// If you just need to test existence, then use `contains` since it is
+    /// faster.
+    ///
+    /// # Example
+    ///
+    /// Build a suffix array of some text and find all occurrences of a
+    /// substring:
+    ///
+    /// ```rust
+    /// use tokengrams::SuffixTable;
+    /// use utf16_literal::utf16;
+    ///
+    /// let sa = SuffixTable::new(utf16!("The quick brown fox was very quick.").to_vec(), None, false);
+    /// assert_eq!(sa.positions(utf16!("quick")), &[4, 29]);
+    /// ```
+    #[allow(dead_code)]
+    fn positions(&self, query: &[usize]) -> &[u64];
+
+    // Count occurrences of each token directly following the query sequence.
+    fn count_next(&self, query: &[usize]) -> Vec<usize>;
+
+    fn batch_count_next(&self, queries: &[Vec<usize>]) -> Vec<Vec<usize>>;
+
+    // For a given n, produce a map from an occurrence count to the number of unique n-grams with that occurrence count.
+    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize>;
+}
+
+#[typetag::serialize]
+pub trait InMemoryTable: Table {}
+
+#[typetag::serialize]
+impl InMemoryTable for SuffixTable<Box<[u16]>> {}
+
+#[typetag::serialize]
+impl InMemoryTable for SuffixTable<Box<[u32]>> {}
+
+impl<T, U, E> Table for SuffixTable<T, U>
+where
+    T: Deref<Target = [E]> + Sync,
+    U: Deref<Target = [u64]> + Sync,
+    E: Token,
+{
+    fn is_sorted(&self) -> bool {
+        self.is_sorted()
+    }
+
+    fn contains(&self, query: &[usize]) -> bool {
+        let query: Vec<E> = query.iter()
+            .filter_map(|&item| E::try_from(item).ok())
+            .collect();
+        self.contains(&query)
+    }
+
+    fn positions(&self, query: &[usize]) -> &[u64] {
+        let query: Vec<E> = query.iter()
+            .filter_map(|&item| E::try_from(item).ok())
+            .collect();
+        self.positions(&query)
+    }
+
+    fn count_next(&self, query: &[usize]) -> Vec<usize> {
+        let query: Vec<E> = query.iter()
+            .filter_map(|&item| E::try_from(item).ok())
+            .collect();
+        self.count_next(&query)
+    }
+
+    fn batch_count_next(&self, queries: &[Vec<usize>]) -> Vec<Vec<usize>> {
+        queries
+            .into_par_iter()
+            .map(|query| {
+                let query = unsafe { std::mem::transmute(query.as_slice()) };
+                self.count_next(query)
+            })
+            .collect()
+    }
+
+    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
+        self.count_ngrams(n)
     }
 }
 
@@ -701,7 +494,7 @@ mod tests {
     use utf16_literal::utf16;
 
     fn sais(text: &str) -> SuffixTable {
-        SuffixTable::new(text.encode_utf16().collect::<Vec<_>>(), false)
+        SuffixTable::new(text.encode_utf16().collect::<Vec<_>>(), None, false)
     }
 
     #[test]
@@ -709,11 +502,12 @@ mod tests {
         let sa = sais("aaab");
 
         let query = utf16!("a");
+
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(2, sa.count_next(query, Option::None)[a_index]);
-        assert_eq!(1, sa.count_next(query, Option::None)[b_index]);
+        assert_eq!(2, sa.count_next(query)[a_index]);
+        assert_eq!(1, sa.count_next(query)[b_index]);
     }
 
     #[test]
@@ -724,8 +518,8 @@ mod tests {
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(3, sa.count_next(query, Option::None)[a_index]);
-        assert_eq!(1, sa.count_next(query, Option::None)[b_index]);
+        assert_eq!(3, sa.count_next(query)[a_index]);
+        assert_eq!(1, sa.count_next(query)[b_index]);
     }
 
     #[test]
@@ -733,10 +527,15 @@ mod tests {
         let sa = sais("aaab");
 
         let queries: Vec<Vec<u16>> = vec![vec![utf16!("a")[0]; 1]; 10_000];
+        let queries_usize: Vec<Vec<usize>> = queries
+            .into_iter()
+            .map(|inner_vec| inner_vec.into_iter().map(|x| x as usize).collect())
+            .collect();
+
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(2, sa.batch_count_next(&queries, Option::None)[0][a_index]);
-        assert_eq!(1, sa.batch_count_next(&queries, Option::None)[0][b_index]);
+        assert_eq!(2, sa.batch_count_next(&queries_usize)[0][a_index]);
+        assert_eq!(1, sa.batch_count_next(&queries_usize)[0][b_index]);
     }
 }

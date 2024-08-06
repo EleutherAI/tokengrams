@@ -27,6 +27,7 @@ impl<T: Unsigned > MmapSlice<T> {
         }
     }
 
+    // Return the number of items of type T that can fit in the memory map.
     pub fn len(&self) -> usize {
         self.mmap.len() / std::mem::size_of::<T>()
     }

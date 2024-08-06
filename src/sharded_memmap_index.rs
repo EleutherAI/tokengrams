@@ -15,10 +15,11 @@ pub struct ShardedMemmapIndex {
 #[pymethods]
 impl ShardedMemmapIndex {
     #[new]
-    pub fn new(_py: Python, files: Vec<(String, String)>) -> PyResult<Self> {
-        let shards: Vec<MemmapIndex> = files
+    #[pyo3(signature = (paths, vocab=u16::MAX as usize + 1))]
+    pub fn new(_py: Python, paths: Vec<(String, String)>, vocab: usize) -> PyResult<Self> {
+        let shards: Vec<MemmapIndex> = paths
             .into_iter()
-            .map(|(text_path, table_path)| MemmapIndex::new(_py, text_path, table_path).unwrap())
+            .map(|(text_path, table_path)| MemmapIndex::new(_py, text_path, table_path, vocab).unwrap())
             .collect();
 
         Ok(ShardedMemmapIndex {
@@ -28,12 +29,12 @@ impl ShardedMemmapIndex {
     }
 
     #[staticmethod]
-    #[pyo3(signature = (paths, verbose=false))]
-    pub fn build(paths: Vec<(String, String)>, verbose: bool) -> PyResult<Self> {
+    #[pyo3(signature = (paths, vocab=u16::MAX as usize + 1, verbose=false))]
+    pub fn build(paths: Vec<(String, String)>, vocab: usize, verbose: bool) -> PyResult<Self> {
         let shards: Vec<MemmapIndex> = paths
             .into_iter()
             .map(|(token_paths, index_paths)| {
-                MemmapIndex::build(token_paths, index_paths, verbose).unwrap()
+                MemmapIndex::build(token_paths, index_paths, vocab, verbose).unwrap()
             })
             .collect();
 
@@ -47,37 +48,35 @@ impl ShardedMemmapIndex {
         self.shards.iter().all(|shard| shard.is_sorted())
     }
 
-    pub fn contains(&self, query: Vec<u16>) -> bool {
+    pub fn contains(&self, query: Vec<usize>) -> bool {
         self.shards
             .iter()
             .any(|shard| shard.contains(query.clone()))
     }
 
-    pub fn count(&self, query: Vec<u16>) -> usize {
+    pub fn count(&self, query: Vec<usize>) -> usize {
         self.shards
             .iter()
             .map(|shard| shard.count(query.clone()))
             .sum()
     }
 
-    #[pyo3(signature = (query, vocab=None))]
-    pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
+    pub fn count_next(&self, query: Vec<usize>) -> Vec<usize> {
         let counts = self
             .shards
             .iter()
-            .map(|shard| shard.count_next_slice(&query, vocab))
+            .map(|shard| shard.count_next_slice(&query))
             .collect::<Vec<_>>();
         (0..counts[0].len())
             .map(|i| counts.iter().map(|count| count[i]).sum())
             .collect()
     }
 
-    #[pyo3(signature = (queries, vocab=None))]
-    pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
+    pub fn batch_count_next(&self, queries: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
         let batch_counts = self
             .shards
             .iter()
-            .map(|shard| shard.batch_count_next(queries.clone(), vocab))
+            .map(|shard| shard.batch_count_next(queries.clone()))
             .collect::<Vec<_>>();
 
         (0..queries.len())
@@ -90,47 +89,40 @@ impl ShardedMemmapIndex {
     }
 
     /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
-    #[pyo3(signature = (query, n, k, num_samples, vocab=None))]
     pub fn sample_unsmoothed(
         &self,
-        query: Vec<u16>,
+        query: Vec<usize>,
         n: usize,
         k: usize,
         num_samples: usize,
-        vocab: Option<u16>,
-    ) -> Result<Vec<Vec<u16>>> {
-        self.sample_unsmoothed_rs(&query, n, k, num_samples, vocab)
+    ) -> Result<Vec<Vec<usize>>> {
+        self.sample_unsmoothed_rs(&query, n, k, num_samples)
     }
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    #[pyo3(signature = (query, vocab=None))]
-    pub fn get_smoothed_probs(&mut self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
-        self.get_smoothed_probs_rs(&query, vocab)
+    pub fn get_smoothed_probs(&mut self, query: Vec<usize>) -> Vec<f64> {
+        self.get_smoothed_probs_rs(&query)
     }
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    #[pyo3(signature = (queries, vocab=None))]
     pub fn batch_get_smoothed_probs(
         &mut self,
-        queries: Vec<Vec<u16>>,
-        vocab: Option<u16>,
+        queries: Vec<Vec<usize>>
     ) -> Vec<Vec<f64>> {
-        self.batch_get_smoothed_probs_rs(&queries, vocab)
+        self.batch_get_smoothed_probs_rs(&queries)
     }
 
     /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
-    #[pyo3(signature = (query, n, k, num_samples, vocab=None))]
     pub fn sample_smoothed(
         &mut self,
-        query: Vec<u16>,
+        query: Vec<usize>,
         n: usize,
         k: usize,
-        num_samples: usize,
-        vocab: Option<u16>,
-    ) -> Result<Vec<Vec<u16>>> {
-        self.sample_smoothed_rs(&query, n, k, num_samples, vocab)
+        num_samples: usize
+    ) -> Result<Vec<Vec<usize>>> {
+        self.sample_smoothed_rs(&query, n, k, num_samples)
     }
 
     /// Warning: O(k**n) where k is vocabulary size, use with caution.
@@ -151,11 +143,11 @@ impl Sample for ShardedMemmapIndex {
         &mut self.cache
     }
 
-    fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
+    fn count_next_slice(&self, query: &[usize]) -> Vec<usize> {
         let counts = self
             .shards
             .iter()
-            .map(|shard| shard.count_next_slice(query, vocab))
+            .map(|shard| shard.count_next_slice(query))
             .collect::<Vec<_>>();
         (0..counts[0].len())
             .map(|i| counts.iter().map(|count| count[i]).sum())

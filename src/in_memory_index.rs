@@ -8,34 +8,31 @@ use std::io::Read;
 use crate::sample::{KneserNeyCache, Sample};
 use crate::table::SuffixTable;
 use crate::util::transmute_slice;
-use crate::table::Table;
-use crate::token::TokenType;
+use crate::table::InMemoryTable;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
 #[pyclass]
 pub struct InMemoryIndex {
-    table: Box<dyn Table + Send + Sync>,
-    cache: KneserNeyCache,
-    token_type: TokenType
+    table: Box<dyn InMemoryTable + Send + Sync>,
+    cache: KneserNeyCache
 }
 
 impl InMemoryIndex {
-    pub fn new(tokens: Vec<usize>, verbose: bool, token_type: TokenType) -> Self {
-        let table: Box<dyn Table + Send + Sync> = match token_type {
-            TokenType::U16 => {
-                let tokens: Vec<u16> = tokens.iter().map(|&x| x as u16).collect();
-                Box::new(SuffixTable::<Box<[u16]>, Box<[u64]>>::new(tokens, verbose))
-            },
-            TokenType::U32 => {
-                let tokens: Vec<u32> = tokens.iter().map(|&x| x as u32).collect();
-                Box::new(SuffixTable::<Box<[u32]>, Box<[u64]>>::new(tokens, verbose))
-            },
+    pub fn new(tokens: Vec<usize>, vocab: Option<usize>, verbose: bool) -> Self {
+        let vocab = vocab.unwrap_or(u16::MAX as usize + 1);
+
+        let table: Box<dyn InMemoryTable + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
+            println!("u16");
+            let tokens: Vec<u16> = tokens.iter().map(|&x| x as u16).collect();
+            Box::new(SuffixTable::<Box<[u16]>, Box<[u64]>>::new(tokens, Some(vocab), verbose))
+        } else {
+            let tokens: Vec<u32> = tokens.iter().map(|&x| x as u32).collect();
+            Box::new(SuffixTable::<Box<[u32]>, Box<[u64]>>::new(tokens, Some(vocab), verbose))
         };
 
         InMemoryIndex {
             table,
             cache: KneserNeyCache::default(),
-            token_type
         }
     }
 }
@@ -49,8 +46,8 @@ impl Sample for InMemoryIndex {
         &mut self.cache
     }
 
-    fn count_next_slice(&self, query: &[usize], vocab: Option<usize>) -> Vec<usize> {
-        self.table.count_next(query, vocab)
+    fn count_next_slice(&self, query: &[usize]) -> Vec<usize> {
+        self.table.count_next(query)
     }
 
     fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
@@ -61,44 +58,48 @@ impl Sample for InMemoryIndex {
 #[pymethods]
 impl InMemoryIndex {
     #[new]
-    #[pyo3(signature = (tokens, verbose=false, token_type=TokenType::U16))]
-    pub fn new_py(_py: Python, tokens: Vec<usize>, verbose: bool, token_type: TokenType) -> Self {
-        let table: Box<dyn Table + Send + Sync> = match token_type {
-            TokenType::U16 => {
-                let tokens: Vec<u16> = tokens.iter().map(|&x| x as u16).collect();
-                Box::new(SuffixTable::<Box<[u16]>, Box<[u64]>>::new(tokens, verbose))
-            },
-            TokenType::U32 => {
-                let tokens: Vec<u32> = tokens.iter().map(|&x| x as u32).collect();
-                Box::new(SuffixTable::<Box<[u32]>, Box<[u64]>>::new(tokens, verbose))
-            },
+    #[pyo3(signature = (tokens, vocab=u16::MAX as usize + 1, verbose=false))]
+    pub fn new_py(_py: Python, tokens: Vec<usize>, vocab: usize, verbose: bool) -> Self {
+        let table: Box<dyn InMemoryTable + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
+            let tokens: Vec<u16> = tokens.iter().map(|&x| x as u16).collect();
+            Box::new(SuffixTable::<Box<[u16]>, Box<[u64]>>::new(tokens, Some(vocab), verbose))
+        } else {
+            let tokens: Vec<u32> = tokens.iter().map(|&x| x as u32).collect();
+            Box::new(SuffixTable::<Box<[u32]>, Box<[u64]>>::new(tokens, Some(vocab), verbose))
         };
 
         InMemoryIndex {
             table,
-            cache: KneserNeyCache::default(),
-            token_type
+            cache: KneserNeyCache::default()
         }
     }
 
     #[staticmethod]
-    pub fn from_pretrained(path: String, token_type: TokenType) -> PyResult<Self> {
+    #[pyo3(signature = (path, vocab=u16::MAX as usize + 1))]
+    pub fn from_pretrained(path: String, vocab: usize) -> PyResult<Self> {
         // TODO: handle errors here
-        let table: SuffixTable = deserialize(&std::fs::read(path)?).unwrap();
-        Ok(InMemoryIndex {
-            table: Box::new(table),
-            cache: KneserNeyCache::default(),
-            token_type
-        })
+        if vocab <= u16::MAX as usize + 1 {
+            let table: SuffixTable<Box<[u16]>> = deserialize(&std::fs::read(path)?).unwrap();
+            Ok(InMemoryIndex {
+                table: Box::new(table),
+                cache: KneserNeyCache::default()
+            })
+        } else {
+            let table: SuffixTable<Box<[u32]>> = deserialize(&std::fs::read(path)?).unwrap();
+            Ok(InMemoryIndex {
+                table: Box::new(table),
+                cache: KneserNeyCache::default()
+            })
+        }
     }
 
     #[staticmethod]
-    #[pyo3(signature = (path, verbose=false, token_limit=None, token_type=TokenType::U16))]
+    #[pyo3(signature = (path, token_limit=None, vocab=u16::MAX as usize + 1, verbose=false))]
     pub fn from_token_file(
         path: String,
-        verbose: bool,
         token_limit: Option<usize>,
-        token_type: TokenType
+        vocab: usize,
+        verbose: bool,
     ) -> PyResult<Self> {
         let mut buffer = Vec::new();
         let mut file = File::open(&path)?;
@@ -111,21 +112,17 @@ impl InMemoryIndex {
             file.read_to_end(&mut buffer)?;
         };
 
-        let table: Box<dyn Table + Send + Sync> = match token_type {
-            TokenType::U16 => {
-                let tokens = transmute_slice::<u8, u16>(buffer.as_slice());
-                Box::new(SuffixTable::new(tokens, verbose))
-            },
-            TokenType::U32 => {
-                let tokens = transmute_slice::<u8, u32>(buffer.as_slice());
-                Box::new(SuffixTable::new(tokens, verbose))
-            },
+        let table: Box<dyn InMemoryTable + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
+            let tokens = transmute_slice::<u8, u16>(buffer.as_slice());
+            Box::new(SuffixTable::new(tokens, Some(vocab), verbose))
+        } else {
+            let tokens = transmute_slice::<u8, u32>(buffer.as_slice());
+            Box::new(SuffixTable::new(tokens, Some(vocab), verbose))
         };
 
         Ok(InMemoryIndex {
             table,
-            cache: KneserNeyCache::default(),
-            token_type
+            cache: KneserNeyCache::default()
         })
     }
 
@@ -145,14 +142,12 @@ impl InMemoryIndex {
         self.table.positions(&query).len()
     }
 
-    #[pyo3(signature = (query, vocab=None))]
-    pub fn count_next(&self, query: Vec<usize>, vocab: Option<usize>) -> Vec<usize> {
-        self.table.count_next(&query, vocab)
+    pub fn count_next(&self, query: Vec<usize>) -> Vec<usize> {
+        self.table.count_next(&query)
     }
 
-    #[pyo3(signature = (queries, vocab=None))]
-    pub fn batch_count_next(&self, queries: Vec<Vec<usize>>, vocab: Option<usize>) -> Vec<Vec<usize>> {
-        self.table.batch_count_next(&queries, vocab)
+    pub fn batch_count_next(&self, queries: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+        self.table.batch_count_next(&queries)
     }
 
     pub fn save(&self, path: String) -> PyResult<()> {
@@ -163,47 +158,40 @@ impl InMemoryIndex {
     }
 
     /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
-    #[pyo3(signature = (query, n, k, num_samples, vocab=None))]
     pub fn sample_unsmoothed(
         &self,
         query: Vec<usize>,
         n: usize,
         k: usize,
-        num_samples: usize,
-        vocab: Option<usize>,
+        num_samples: usize
     ) -> Result<Vec<Vec<usize>>> {
-        self.sample_unsmoothed_rs(&query, n, k, num_samples, vocab)
+        self.sample_unsmoothed_rs(&query, n, k, num_samples)
     }
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    #[pyo3(signature = (query, vocab=None))]
-    pub fn get_smoothed_probs(&mut self, query: Vec<usize>, vocab: Option<usize>) -> Vec<f64> {
-        self.get_smoothed_probs_rs(&query, vocab)
+    pub fn get_smoothed_probs(&mut self, query: Vec<usize>) -> Vec<f64> {
+        self.get_smoothed_probs_rs(&query)
     }
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    #[pyo3(signature = (queries, vocab=None))]
     pub fn batch_get_smoothed_probs(
         &mut self,
-        queries: Vec<Vec<usize>>,
-        vocab: Option<usize>,
+        queries: Vec<Vec<usize>>
     ) -> Vec<Vec<f64>> {
-        self.batch_get_smoothed_probs_rs(&queries, vocab)
+        self.batch_get_smoothed_probs_rs(&queries)
     }
 
     /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
-    #[pyo3(signature = (query, n, k, num_samples, vocab=None))]
     pub fn sample_smoothed(
         &mut self,
         query: Vec<usize>,
         n: usize,
         k: usize,
-        num_samples: usize,
-        vocab: Option<usize>,
+        num_samples: usize
     ) -> Result<Vec<Vec<usize>>> {
-        self.sample_smoothed_rs(&query, n, k, num_samples, vocab)
+        self.sample_smoothed_rs(&query, n, k, num_samples)
     }
 
     /// Warning: O(k**n) where k is vocabulary size, use with caution.
