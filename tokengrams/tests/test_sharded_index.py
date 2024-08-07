@@ -48,7 +48,7 @@ def test_sharded_index():
         token_file_2.flush()
         
         for token_file, index_file in shard_files:
-            MemmapIndex.build(token_file, index_file, False)
+            MemmapIndex.build(token_file, index_file)
         
         index = ShardedMemmapIndex(shard_files)
         check_sharded_index(index, chunked_tokens, eos_token)

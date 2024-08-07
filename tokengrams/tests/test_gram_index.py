@@ -36,11 +36,11 @@ def test_gram_index(tokens: list[int]):
         memmap = np.memmap(f, dtype=np.uint16, mode="w+", shape=(len(tokens),))
         memmap[:] = tokens
 
-        index = InMemoryIndex.from_token_file(f.name, False, None)
+        index = InMemoryIndex.from_token_file(f.name)
         check_gram_index(index, tokens)
 
         with NamedTemporaryFile() as idx:
-            index = MemmapIndex.build(f.name, idx.name, False)
+            index = MemmapIndex.build(f.name, idx.name)
             check_gram_index(index, tokens)
 
             index = MemmapIndex(f.name, idx.name)
@@ -48,5 +48,5 @@ def test_gram_index(tokens: list[int]):
 
         # Now check limited token loading
         for limit in range(1, len(tokens) + 1):
-            index = InMemoryIndex.from_token_file(f.name, False, limit)
+            index = InMemoryIndex.from_token_file(f.name, limit)
             check_gram_index(index, tokens[:limit])

@@ -5,7 +5,7 @@ class InMemoryIndex:
         ...
     
     @staticmethod
-    def from_token_file(path: str, verbose: bool, token_limit: int | None, vocab: int = 2**16) -> "InMemoryIndex":
+    def from_token_file(path: str, token_limit: int | None = None, vocab: int = 2**16, verbose: bool = False) -> "InMemoryIndex":
         """Construct a `InMemoryIndex` from a file containing raw little-endian tokens."""
 
     def is_sorted(self) -> bool:
