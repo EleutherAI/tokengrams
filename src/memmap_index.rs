@@ -93,8 +93,11 @@ impl MemmapIndex {
 
         // Re-open the table as read-only
         let table_mmap = MmapSlice::new(&table_file)?;
+        let table = SuffixTable::from_parts(text_mmap, table_mmap);
+        assert!(table.is_sorted());
+
         Ok(MemmapIndex {
-            table: SuffixTable::from_parts(text_mmap, table_mmap),
+            table,
             cache: KneserNeyCache::default(),
         })
     }
