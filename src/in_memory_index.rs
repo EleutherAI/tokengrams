@@ -21,8 +21,11 @@ impl InMemoryIndex {
     #[new]
     #[pyo3(signature = (tokens, verbose=false))]
     pub fn new_py(_py: Python, tokens: Vec<u16>, verbose: bool) -> Self {
+        let table = SuffixTable::new(tokens, verbose);
+        assert!(table.is_sorted());
+
         InMemoryIndex {
-            table: SuffixTable::new(tokens, verbose),
+            table,
             cache: KneserNeyCache::default(),
         }
     }
