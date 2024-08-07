@@ -82,11 +82,11 @@ impl MemmapIndex {
 
         // Re-open the table as read-only
         let table_mmap = MmapSlice::new(&table_file)?;
-        let table = SuffixTable::from_parts(text_mmap, table_mmap);
+        let table = SuffixTable::from_parts(text_mmap, table_mmap, vocab);
         assert!(table.is_sorted());
 
         Ok(MemmapIndex {
-            table: Box::new(SuffixTable::from_parts(text_mmap, table_mmap, vocab)),
+            table: Box::new(table),
             cache: KneserNeyCache::default(),
         })
 
@@ -114,6 +114,7 @@ impl MemmapIndex {
                 Some(vocab)
             ))
         };
+        assert!(table.is_sorted());
 
         Ok(MemmapIndex {
             table,
