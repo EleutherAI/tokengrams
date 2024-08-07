@@ -2,7 +2,7 @@ pub mod mmap_slice;
 pub use in_memory_index::InMemoryIndex;
 pub use memmap_index::MemmapIndex;
 pub use sharded_memmap_index::ShardedMemmapIndex;
-pub use table::{SuffixTable, Table};
+pub use table::SuffixTable;
 
 /// Python bindings
 use pyo3::prelude::*;
@@ -14,7 +14,6 @@ mod sample;
 mod sharded_memmap_index;
 mod table;
 mod util;
-mod token;
 
 #[pymodule]
 fn tokengrams(m: &Bound<'_, PyModule>) -> PyResult<()> {

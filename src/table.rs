@@ -4,8 +4,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{fmt, ops::Deref, u64};
-
-use crate::token::Token;
+use funty::Unsigned;
 use crate::par_quicksort::par_sort_unstable_by_key;
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
@@ -18,7 +17,7 @@ pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
 }
 
 /// Method for vanilla in-memory suffix tables
-impl<T: Token> SuffixTable<Box<[T]>, Box<[u64]>> {
+impl<T: Unsigned> SuffixTable<Box<[T]>, Box<[u64]>> {
     /// Creates a new suffix table for `text` in `O(n log n)` time and `O(n)`
     /// space.
     pub fn new<S>(src: S, vocab: Option<usize>, verbose: bool) -> Self
@@ -49,7 +48,7 @@ impl<T: Token> SuffixTable<Box<[T]>, Box<[u64]>> {
 
 impl<T, U, E> SuffixTable<T, U>
 where
-    E: Token,
+    E: Unsigned,
     T: Deref<Target = [E]> + Sync,
     U: Deref<Target = [u64]> + Sync,
 {
@@ -241,7 +240,6 @@ where
 
         let (range_start, range_end) = self.boundaries(query);
         self.recurse_count_next(&mut counts, query, range_start, range_end);
-        println!("{:?}", counts[97]);
         counts
     }
 
@@ -270,8 +268,7 @@ where
         let (token_start, token_end) =
             self.range_boundaries(&suffix[..query.len() + 1], search_start, search_end);
         
-        let index = suffix[query.len()];
-        counts[index.as_usize()] = token_end - token_start;
+        counts[suffix[query.len()].as_usize()] = token_end - token_start;
 
         if search_start < token_start {
             self.recurse_count_next(counts, query, search_start, token_start);
@@ -337,7 +334,7 @@ where
     }
 }
 
-// Non-generic interface for index pyclass, using usize instead of E.
+// PyClass interface with generic Unsigned type replaced with usize.
 pub trait Table {
     /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
     fn is_sorted(&self) -> bool;
@@ -413,7 +410,7 @@ impl<T, U, E> Table for SuffixTable<T, U>
 where
     T: Deref<Target = [E]> + Sync,
     U: Deref<Target = [u64]> + Sync,
-    E: Token,
+    E: Unsigned,
 {
     fn is_sorted(&self) -> bool {
         self.is_sorted()
@@ -502,7 +499,6 @@ mod tests {
         let sa = sais("aaab");
 
         let query = utf16!("a");
-
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 

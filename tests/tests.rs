@@ -155,11 +155,8 @@ fn prop_positions() {
 fn sample_unsmoothed_exists() {
     let s = utf16_as_usize("aaaa");
     let a = &s[0..1];
-    println!("S: {:?}", s);
-
 
     let index = InMemoryIndex::new(s.clone(), None, false);
-    println!("Index: {:?}", index.count_next(vec![97, 97])[97]);
     let seqs = index
         .sample_unsmoothed(a.to_vec(), 3, 10, 20)
         .unwrap();
@@ -233,7 +230,6 @@ fn smoothed_probs_exists() {
     let tokens = "aaaaaaaabc".to_string();
 
     let sa: SuffixTable = sais(&tokens);
-    
     let query = vec![utf16!("b")[0]];
     let vocab = utf16!("c")[0] + 1;
     let a = utf16!("a")[0] as usize;

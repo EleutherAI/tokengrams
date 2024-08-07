@@ -9,7 +9,7 @@ use crate::par_quicksort::par_sort_unstable_by_key;
 use crate::sample::{KneserNeyCache, Sample};
 use crate::table::SuffixTable;
 use crate::table::Table;
-use crate::token::Token;
+use funty::Unsigned;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
@@ -19,7 +19,7 @@ pub struct MemmapIndex {
 }
 
 impl MemmapIndex {
-    fn build_typed<T: Token>(
+    fn build_typed<T: Unsigned>(
         text_path: String, 
         table_path: String,
         vocab: Option<usize>, 
