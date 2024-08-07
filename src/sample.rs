@@ -46,10 +46,8 @@ pub trait Sample: Send + Sync {
             // look at the previous (n - 1) characters to predict the n-gram completion
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
-            println!("prev {:?}", prev);
 
             let counts = self.count_next_slice(prev);
-            // println!("{:?}", counts[97]);
             let dist = WeightedIndex::new(&counts)?;
             let sampled_index: usize = dist.sample(&mut rng).try_into().unwrap_or_else(|_| panic!("Sampled token > usize::MAX"));
             

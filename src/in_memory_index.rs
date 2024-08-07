@@ -29,7 +29,7 @@ impl InMemoryIndex {
             Box::new(SuffixTable::<Box<[u32]>, Box<[u64]>>::new(tokens, Some(vocab), verbose))
         };
 
-        assert!(table.is_sorted());
+        debug_assert!(table.is_sorted());
 
         InMemoryIndex {
             table,
@@ -69,7 +69,7 @@ impl InMemoryIndex {
             Box::new(SuffixTable::<Box<[u32]>, Box<[u64]>>::new(tokens, Some(vocab), verbose))
         };
 
-        assert!(table.is_sorted());
+        debug_assert!(table.is_sorted());
 
         InMemoryIndex {
             table,
@@ -83,14 +83,14 @@ impl InMemoryIndex {
         // TODO: handle errors here
         if vocab <= u16::MAX as usize + 1 {
             let table: SuffixTable<Box<[u16]>> = deserialize(&std::fs::read(path)?).unwrap();
-            assert!(table.is_sorted());
+            debug_assert!(table.is_sorted());
             Ok(InMemoryIndex {
                 table: Box::new(table),
                 cache: KneserNeyCache::default()
             })
         } else {
             let table: SuffixTable<Box<[u32]>> = deserialize(&std::fs::read(path)?).unwrap();
-            assert!(table.is_sorted());
+            debug_assert!(table.is_sorted());
             Ok(InMemoryIndex {
                 table: Box::new(table),
                 cache: KneserNeyCache::default()
@@ -124,7 +124,7 @@ impl InMemoryIndex {
             let tokens = transmute_slice::<u8, u32>(buffer.as_slice());
             Box::new(SuffixTable::new(tokens, Some(vocab), verbose))
         };
-        assert!(table.is_sorted());
+        debug_assert!(table.is_sorted());
 
         Ok(InMemoryIndex {
             table,

@@ -441,8 +441,7 @@ where
         queries
             .into_par_iter()
             .map(|query| {
-                let query = unsafe { std::mem::transmute(query.as_slice()) };
-                self.count_next(query)
+                <Self as Table>::count_next(self, query.as_slice())
             })
             .collect()
     }

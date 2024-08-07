@@ -83,7 +83,7 @@ impl MemmapIndex {
         // Re-open the table as read-only
         let table_mmap = MmapSlice::new(&table_file)?;
         let table = SuffixTable::from_parts(text_mmap, table_mmap, vocab);
-        assert!(table.is_sorted());
+        debug_assert!(table.is_sorted());
 
         Ok(MemmapIndex {
             table: Box::new(table),
@@ -114,7 +114,7 @@ impl MemmapIndex {
                 Some(vocab)
             ))
         };
-        assert!(table.is_sorted());
+        debug_assert!(table.is_sorted());
 
         Ok(MemmapIndex {
             table,
