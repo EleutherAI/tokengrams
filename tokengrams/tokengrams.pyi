@@ -107,7 +107,7 @@ class ShardedMemmapIndex:
         """Load a prebuilt memory-mapped index from a list of pairs of files in form (token_file, index_file)."""
 
     @staticmethod
-    def build(token_file: str, index_file: str, vocab: int = 2**16, verbose: bool = False) -> "ShardedMemmapIndex":
+    def build(files: list[tuple[str, str]], vocab: int = 2**16, verbose: bool = False) -> "ShardedMemmapIndex":
         """Build a memory-mapped index from a token file."""
 
     def is_sorted(self) -> bool:
