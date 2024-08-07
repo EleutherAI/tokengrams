@@ -8,42 +8,31 @@ use crate::mmap_slice::{MmapSlice, MmapSliceMut};
 use crate::par_quicksort::par_sort_unstable_by_key;
 use crate::sample::{KneserNeyCache, Sample};
 use crate::table::SuffixTable;
+use crate::table::Table;
+use funty::Unsigned;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
 pub struct MemmapIndex {
-    table: SuffixTable<MmapSlice<u16>, MmapSlice<u64>>,
-    cache: KneserNeyCache,
+    table: Box<dyn Table + Send + Sync>,
+    cache: KneserNeyCache
 }
 
-#[pymethods]
 impl MemmapIndex {
-    #[new]
-    pub fn new(_py: Python, text_path: String, table_path: String) -> PyResult<Self> {
-        let text_file = File::open(&text_path)?;
-        let table_file = File::open(&table_path)?;
-
-        Ok(MemmapIndex {
-            table: SuffixTable::from_parts(
-                MmapSlice::new(&text_file)?,
-                MmapSlice::new(&table_file)?,
-            ),
-            cache: KneserNeyCache::default(),
-        })
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (text_path, table_path, verbose=false))]
-    pub fn build(text_path: String, table_path: String, verbose: bool) -> PyResult<Self> {
+    fn build_typed<T: Unsigned>(
+        text_path: String, 
+        table_path: String,
+        vocab: Option<usize>, 
+        verbose: bool
+    ) -> PyResult<Self> {
         // Memory map the text as read-only
-        let text_mmap = MmapSlice::new(&File::open(&text_path)?)?;
+        let text_mmap = MmapSlice::<T>::new(&File::open(&text_path).unwrap()).unwrap();
 
-        // Create the table file
         let table_file = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .write(true)
-            .open(&table_path)?;
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&table_path)?;
 
         // Allocate space on disk for the table
         let table_size = text_mmap.len() * 8;
@@ -93,16 +82,57 @@ impl MemmapIndex {
 
         // Re-open the table as read-only
         let table_mmap = MmapSlice::new(&table_file)?;
-        let table = SuffixTable::from_parts(text_mmap, table_mmap);
-        assert!(table.is_sorted());
+        let table = SuffixTable::from_parts(text_mmap, table_mmap, vocab);
+        debug_assert!(table.is_sorted());
+
+        Ok(MemmapIndex {
+            table: Box::new(table),
+            cache: KneserNeyCache::default(),
+        })
+
+    }
+}
+
+#[pymethods]
+impl MemmapIndex {
+    #[new]
+    #[pyo3(signature = (text_path, table_path, vocab=u16::MAX as usize + 1))]
+    pub fn new(_py: Python, text_path: String, table_path: String, vocab: usize) -> PyResult<Self> {
+        let text_file = File::open(&text_path)?;
+        let table_file = File::open(&table_path)?;
+
+        let table: Box<dyn Table + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
+            Box::new(SuffixTable::from_parts(
+                MmapSlice::<u16>::new(&text_file)?,
+                MmapSlice::new(&table_file)?,
+                Some(vocab)
+            ))
+        } else {
+            Box::new(SuffixTable::from_parts(
+                MmapSlice::<u32>::new(&text_file)?,
+                MmapSlice::new(&table_file)?,
+                Some(vocab)
+            ))
+        };
+        debug_assert!(table.is_sorted());
 
         Ok(MemmapIndex {
             table,
-            cache: KneserNeyCache::default(),
+            cache: KneserNeyCache::default()
         })
     }
 
-    pub fn positions(&self, query: Vec<u16>) -> Vec<u64> {
+    #[staticmethod]
+    #[pyo3(signature = (text_path, table_path, vocab=u16::MAX as usize + 1, verbose=false))]
+    pub fn build(text_path: String, table_path: String, vocab: usize, verbose: bool) -> PyResult<Self> {
+        if vocab <= u16::MAX as usize + 1 {
+            MemmapIndex::build_typed::<u16>(text_path, table_path, Some(vocab), verbose)
+        } else {
+            MemmapIndex::build_typed::<u32>(text_path, table_path, Some(vocab), verbose)
+        }
+    }
+
+    pub fn positions(&self, query: Vec<usize>) -> Vec<u64> {
         self.table.positions(&query).to_vec()
     }
 
@@ -110,66 +140,58 @@ impl MemmapIndex {
         self.table.is_sorted()
     }
 
-    pub fn contains(&self, query: Vec<u16>) -> bool {
+    pub fn contains(&self, query: Vec<usize>) -> bool {
         self.table.contains(&query)
     }
 
-    pub fn count(&self, query: Vec<u16>) -> usize {
+    pub fn count(&self, query: Vec<usize>) -> usize {
         self.table.positions(&query).len()
     }
 
-    #[pyo3(signature = (query, vocab=None))]
-    pub fn count_next(&self, query: Vec<u16>, vocab: Option<u16>) -> Vec<usize> {
-        self.table.count_next(&query, vocab)
+    pub fn count_next(&self, query: Vec<usize>) -> Vec<usize> {
+        self.table.count_next(&query)
     }
 
-    #[pyo3(signature = (queries, vocab=None))]
-    pub fn batch_count_next(&self, queries: Vec<Vec<u16>>, vocab: Option<u16>) -> Vec<Vec<usize>> {
-        self.table.batch_count_next(&queries, vocab)
+    pub fn batch_count_next(&self, queries: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+        self.table.batch_count_next(&queries)
     }
 
     /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
-    #[pyo3(signature = (query, n, k, num_samples, vocab=None))]
+    #[pyo3(signature = (query, n, k, num_samples))]
     pub fn sample_unsmoothed(
         &self,
-        query: Vec<u16>,
+        query: Vec<usize>,
         n: usize,
         k: usize,
-        num_samples: usize,
-        vocab: Option<u16>,
-    ) -> Result<Vec<Vec<u16>>> {
-        self.sample_unsmoothed_rs(&query, n, k, num_samples, vocab)
+        num_samples: usize
+    ) -> Result<Vec<Vec<usize>>> {
+        self.sample_unsmoothed_rs(&query, n, k, num_samples)
     }
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    #[pyo3(signature = (query, vocab=None))]
-    pub fn get_smoothed_probs(&mut self, query: Vec<u16>, vocab: Option<u16>) -> Vec<f64> {
-        self.get_smoothed_probs_rs(&query, vocab)
+    pub fn get_smoothed_probs(&mut self, query: Vec<usize>) -> Vec<f64> {
+        self.get_smoothed_probs_rs(&query)
     }
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    #[pyo3(signature = (queries, vocab=None))]
     pub fn batch_get_smoothed_probs(
         &mut self,
-        queries: Vec<Vec<u16>>,
-        vocab: Option<u16>,
+        queries: Vec<Vec<usize>>
     ) -> Vec<Vec<f64>> {
-        self.batch_get_smoothed_probs_rs(&queries, vocab)
+        self.batch_get_smoothed_probs_rs(&queries)
     }
 
     /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
-    #[pyo3(signature = (query, n, k, num_samples, vocab=None))]
     pub fn sample_smoothed(
         &mut self,
-        query: Vec<u16>,
+        query: Vec<usize>,
         n: usize,
         k: usize,
-        num_samples: usize,
-        vocab: Option<u16>,
-    ) -> Result<Vec<Vec<u16>>> {
-        self.sample_smoothed_rs(&query, n, k, num_samples, vocab)
+        num_samples: usize
+    ) -> Result<Vec<Vec<usize>>> {
+        self.sample_smoothed_rs(&query, n, k, num_samples)
     }
 
     /// Warning: O(k**n) where k is vocabulary size, use with caution.
@@ -190,8 +212,8 @@ impl Sample for MemmapIndex {
         &mut self.cache
     }
 
-    fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize> {
-        self.table.count_next(query, vocab)
+    fn count_next_slice(&self, query: &[usize]) -> Vec<usize> {
+        self.table.count_next(query)
     }
 
     fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {

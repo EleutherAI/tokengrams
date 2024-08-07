@@ -11,27 +11,24 @@ The backend is written in Rust, and the Python bindings are generated using [PyO
 pip install tokengrams
 ```
 
-# Development
-
-```bash
-pip install maturin
-maturin develop
-```
-
 # Usage
+
+Indices are built from on-disk corpora of u16 or u32 tokens. Corpora with vocabulary sizes smaller than 2**16 must use u16 tokens. If the vocabulary size is greater than the length of the largest word size vector that can be allocated on the machine, tokengrams will panic.
 
 ## Building an index
 ```python
 from tokengrams import MemmapIndex
 
-# Create a new index from an on-disk corpus called `document.bin` and save it to
-# `pile.idx`.
+# Create a new index from an on-disk corpus of u32 tokens called `document.bin` and save 
+# it to `pile.idx`. Set verbose to true to include a progress bar for the index sort.
 index = MemmapIndex.build(
     "/data/document.bin",
     "/pile.idx",
+    vocab=2**17,
+    verbose=True
 )
 
-# Verify index correctness
+# True for any valid index.
 print(index.is_sorted())
   
 # Get the count of "hello world" in the corpus.
@@ -43,7 +40,8 @@ print(index.count(tokenizer.encode("hello world")))
 # You can now load the index from disk later using __init__
 index = MemmapIndex(
     "/data/document.bin",
-    "/pile.idx"
+    "/pile.idx",
+    vocab=2**17
 )
 ```
 
@@ -71,6 +69,55 @@ print(index.contains(tokenizer.encode("hello world")))
 
 # Get all n-grams beginning with "hello world" in the corpus
 print(index.positions(tokenizer.encode("hello world")))
+```
+
+## Scaling
+
+Corpora small enough to fit in memory can use an InMemoryIndex:
+
+```python
+from tokengrams import InMemoryIndex
+
+tokens = [0, 1, 2, 3, 4]
+index = InMemoryIndex(tokens, vocab=5)
+```
+
+Many systems struggle with memory mapping large tables (e.g. 40 billion tokens), causing unexpected bus errors. To prevent this split the corpus into shards and use a ShardedMemmapIndex to sort and query the table shard by shard:
+
+```python
+from tokengrams import ShardedMemmapIndex
+from pathlib import Path
+
+index_dir = Path('indices')
+index_dir.mkdir(exist_ok=True)
+files = [
+    ('document-00001-of-00003.bin', f'indices/document-00001-of-00003.idx'),
+    ('document-00002-of-00003.bin', f'indices/document-00002-of-00003.idx'),
+    ('document-00003-of-00003.bin', f'indices/document-00003-of-00003.idx'),
+]
+index = ShardedMemmapIndex.build(files, vocab=2**17, verbose=True)
+```
+
+## Performance
+
+Table creation times scale inversely with the number of available CPU threads. 
+
+The time complexities of count_next(query) and sample_unsmoothed(query) are O(n log n), where n is the number of completions for the query.
+The time complexity of sample_smoothed(query) is O(m n log n) where m is the n-gram order.
+
+# Development
+
+```bash
+cargo build
+cargo test
+```
+
+Develop Python bindings:
+
+```bash
+pip install maturin
+maturin develop
+pytest
 ```
 
 # Support

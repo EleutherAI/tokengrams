@@ -13,7 +13,7 @@ pub struct KneserNeyCache {
 }
 
 pub trait Sample: Send + Sync {
-    fn count_next_slice(&self, query: &[u16], vocab: Option<u16>) -> Vec<usize>;
+    fn count_next_slice(&self, query: &[usize]) -> Vec<usize>;
 
     /// Generate a frequency map from occurrence frequency to the number of
     /// unique n-grams in the corpus with that frequency.
@@ -26,20 +26,19 @@ pub trait Sample: Send + Sync {
     /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
     fn sample_unsmoothed_rs(
         &self,
-        query: &[u16],
+        query: &[usize],
         n: usize,
         k: usize,
-        num_samples: usize,
-        vocab: Option<u16>,
-    ) -> Result<Vec<Vec<u16>>> {
+        num_samples: usize
+    ) -> Result<Vec<Vec<usize>>> {
         (0..num_samples)
             .into_par_iter()
-            .map(|_| self.sample_rs(query, n, k, vocab))
+            .map(|_| self.sample_rs(query, n, k))
             .collect()
     }
 
     //// Autoregressively sample a sequence of k characters from an unsmoothed n-gram model."""
-    fn sample_rs(&self, query: &[u16], n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>> {
+    fn sample_rs(&self, query: &[usize], n: usize, k: usize) -> Result<Vec<usize>> {
         let mut rng = thread_rng();
         let mut sequence = Vec::from(query);
 
@@ -48,11 +47,11 @@ pub trait Sample: Send + Sync {
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
 
-            let counts = self.count_next_slice(prev, vocab);
+            let counts = self.count_next_slice(prev);
             let dist = WeightedIndex::new(&counts)?;
-            let sampled_index = dist.sample(&mut rng);
-
-            sequence.push(sampled_index as u16);
+            let sampled_index: usize = dist.sample(&mut rng).try_into().unwrap_or_else(|_| panic!("Sampled token > usize::MAX"));
+            
+            sequence.push(sampled_index);
         }
 
         Ok(sequence)
@@ -60,43 +59,41 @@ pub trait Sample: Send + Sync {
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    fn get_smoothed_probs_rs(&mut self, query: &[u16], vocab: Option<u16>) -> Vec<f64> {
+    fn get_smoothed_probs_rs(&mut self, query: &[usize]) -> Vec<f64> {
         self.estimate_deltas_rs(1);
-        self.compute_smoothed_unigram_probs(vocab);
-        self.smoothed_probs_rs(query, vocab)
+        self.compute_smoothed_unigram_probs();
+        self.smoothed_probs_rs(query)
     }
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
     fn batch_get_smoothed_probs_rs(
         &mut self,
-        queries: &[Vec<u16>],
-        vocab: Option<u16>,
+        queries: &[Vec<usize>]
     ) -> Vec<Vec<f64>> {
         self.estimate_deltas_rs(1);
-        self.compute_smoothed_unigram_probs(vocab);
+        self.compute_smoothed_unigram_probs();
 
         queries
             .into_par_iter()
-            .map(|query| self.smoothed_probs_rs(query, vocab))
+            .map(|query| self.smoothed_probs_rs(query))
             .collect()
     }
 
     /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
     fn sample_smoothed_rs(
         &mut self,
-        query: &[u16],
+        query: &[usize],
         n: usize,
         k: usize,
-        num_samples: usize,
-        vocab: Option<u16>,
-    ) -> Result<Vec<Vec<u16>>> {
+        num_samples: usize
+    ) -> Result<Vec<Vec<usize>>> {
         self.estimate_deltas_rs(1);
-        self.compute_smoothed_unigram_probs(vocab);
+        self.compute_smoothed_unigram_probs();
 
         (0..num_samples)
             .into_par_iter()
-            .map(|_| self.kn_sample(query, n, k, vocab))
+            .map(|_| self.kn_sample(query, n, k))
             .collect()
     }
 
@@ -104,14 +101,14 @@ pub trait Sample: Send + Sync {
     /// continuation using absolute discounting as described in
     /// "On structuring probabilistic dependences in stochastic language modelling", page 25,
     /// doi:10.1006/csla.1994.1001
-    fn smoothed_probs_rs(&self, query: &[u16], vocab: Option<u16>) -> Vec<f64> {
+    fn smoothed_probs_rs(&self, query: &[usize]) -> Vec<f64> {
         let p_continuations = if query.is_empty() {
             self.get_cached_smoothed_unigram_probs().to_vec()
         } else {
-            self.smoothed_probs_rs(&query[1..], vocab)
+            self.smoothed_probs_rs(&query[1..])
         };
 
-        let counts = self.count_next_slice(&query, vocab);
+        let counts = self.count_next_slice(&query);
         let suffix_count_recip = {
             let suffix_count: usize = counts.iter().sum();
             if suffix_count == 0 {
@@ -148,18 +145,18 @@ pub trait Sample: Send + Sync {
     }
 
     /// Autoregressively sample k characters from a Kneser-Ney smoothed n-gram model.
-    fn kn_sample(&self, query: &[u16], n: usize, k: usize, vocab: Option<u16>) -> Result<Vec<u16>> {
+    fn kn_sample(&self, query: &[usize], n: usize, k: usize) -> Result<Vec<usize>> {
         let mut rng = thread_rng();
         let mut sequence = Vec::from(query);
 
         for _ in 0..k {
             let start = sequence.len().saturating_sub(n - 1);
             let prev = &sequence[start..];
-            let probs = self.smoothed_probs_rs(prev, vocab);
+            let probs = self.smoothed_probs_rs(prev);
             let dist = WeightedIndex::new(&probs)?;
-            let sampled_index = dist.sample(&mut rng);
+            let sampled_index: usize = dist.sample(&mut rng).try_into().unwrap_or_else(|_| panic!("Sampled token > usize::MAX"));
 
-            sequence.push(sampled_index as u16);
+            sequence.push(sampled_index);
         }
 
         Ok(sequence)
@@ -195,23 +192,18 @@ pub trait Sample: Send + Sync {
     }
 
     /// Returns unigram probabilities with additive smoothing applied.
-    fn compute_smoothed_unigram_probs(&mut self, vocab: Option<u16>) {
+    fn compute_smoothed_unigram_probs(&mut self) {
         if let Some(_) = &self.get_cache().unigram_probs {
             return;
         }
 
         let eps = 1e-9;
-        let max_vocab = u16::MAX as usize + 1;
-        let vocab_size = match vocab {
-            Some(size) => size as usize,
-            None => max_vocab,
-        };
 
         // Count the number of unique bigrams that end with each token
-        let counts = self.count_next_slice(&[], vocab);
+        let counts = self.count_next_slice(&[]);
 
         let total_count: usize = counts.iter().sum();
-        let adjusted_total_count = total_count as f64 + eps.mul(vocab_size as f64);
+        let adjusted_total_count = total_count as f64 + eps.mul(counts.len() as f64);
         let unigram_probs: Vec<f64> = counts
             .iter()
             .map(|&count| (count as f64 + eps) / adjusted_total_count)
