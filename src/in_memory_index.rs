@@ -1,19 +1,21 @@
 use anyhow::Result;
-use bincode::{deserialize, serialize};
+use bincode::deserialize;
 use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
+use std::fs::OpenOptions;
 
 use crate::sample::{KneserNeyCache, Sample};
 use crate::table::SuffixTable;
 use crate::util::transmute_slice;
-use crate::table::InMemoryTable;
+use crate::table::Table;
+use crate::mmap_slice::MmapSliceMut;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
 #[pyclass]
 pub struct InMemoryIndex {
-    table: Box<dyn InMemoryTable + Send + Sync>,
+    table: Box<dyn Table + Send + Sync>,
     cache: KneserNeyCache
 }
 
@@ -21,7 +23,7 @@ impl InMemoryIndex {
     pub fn new(tokens: Vec<usize>, vocab: Option<usize>, verbose: bool) -> Self {
         let vocab = vocab.unwrap_or(u16::MAX as usize + 1);
 
-        let table: Box<dyn InMemoryTable + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
+        let table: Box<dyn Table + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
             let tokens: Vec<u16> = tokens.iter().map(|&x| x as u16).collect();
             Box::new(SuffixTable::<Box<[u16]>, Box<[u64]>>::new(tokens, Some(vocab), verbose))
         } else {
@@ -61,7 +63,7 @@ impl InMemoryIndex {
     #[new]
     #[pyo3(signature = (tokens, vocab=u16::MAX as usize + 1, verbose=false))]
     pub fn new_py(_py: Python, tokens: Vec<usize>, vocab: usize, verbose: bool) -> Self {
-        let table: Box<dyn InMemoryTable + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
+        let table: Box<dyn Table + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
             let tokens: Vec<u16> = tokens.iter().map(|&x| x as u16).collect();
             Box::new(SuffixTable::<Box<[u16]>, Box<[u64]>>::new(tokens, Some(vocab), verbose))
         } else {
@@ -117,7 +119,7 @@ impl InMemoryIndex {
             file.read_to_end(&mut buffer)?;
         };
 
-        let table: Box<dyn InMemoryTable + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
+        let table: Box<dyn Table + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
             let tokens = transmute_slice::<u8, u16>(buffer.as_slice());
             Box::new(SuffixTable::new(tokens, Some(vocab), verbose))
         } else {
@@ -154,13 +156,6 @@ impl InMemoryIndex {
 
     pub fn batch_count_next(&self, queries: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
         self.table.batch_count_next(&queries)
-    }
-
-    pub fn save(&self, path: String) -> PyResult<()> {
-        // TODO: handle errors here
-        let bytes = serialize(&self.table).unwrap();
-        std::fs::write(&path, bytes)?;
-        Ok(())
     }
 
     /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
@@ -206,5 +201,25 @@ impl InMemoryIndex {
     /// https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16."""
     pub fn estimate_deltas(&mut self, n: usize) {
         self.estimate_deltas_rs(n);
+    }
+
+    pub fn save(&self, path: String) -> PyResult<()> {
+        let table_file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(path)?;
+
+        let table_data = self.table.get_table();
+        let table_size = table_data.len() * std::mem::size_of::<u64>();
+        table_file.set_len(table_size as u64)?;
+    
+        let mut table_mmap = MmapSliceMut::<u64>::new(&table_file)?;
+    
+        assert_eq!(table_mmap.len(), table_data.len(), "Mismatch in table data length");
+    
+        table_mmap.copy_from_slice(table_data);
+    
+        Ok(())
     }
 }
