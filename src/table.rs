@@ -334,7 +334,7 @@ where
     }
 }
 
-// PyClass interface with generic Unsigned type replaced with usize.
+// PyClass interface with the generic Unsigned type replaced with usize.
 pub trait Table {
     /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
     fn is_sorted(&self) -> bool;
