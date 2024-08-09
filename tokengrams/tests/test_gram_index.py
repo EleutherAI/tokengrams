@@ -28,15 +28,22 @@ def check_gram_index(index: InMemoryIndex | MemmapIndex, tokens: list[int]):
 )
 def test_gram_index(tokens: list[int]):
     # Construct index
-    index = InMemoryIndex(tokens, False)
+    print("Constructing")
+    index = InMemoryIndex(tokens)
     check_gram_index(index, tokens)
 
     # Save to disk and check that we can load it back
     with NamedTemporaryFile() as f:
-        memmap = np.memmap(f, dtype=np.uint16, mode="w+", shape=(len(tokens),))
-        memmap[:] = tokens
+        index.save(f.name)
 
-        index = InMemoryIndex.from_token_file(f.name)
+        # memmap = np.memmap(f, dtype=np.uint16, mode="w+", shape=(len(tokens),))
+        # memmap[:] = tokens
+
+        print("Loading")
+        index = InMemoryIndex.from_pretrained(f.name)
+        
+        print("count next, n tokens", sum(index.count_next([])), len(tokens))
+        print("tokens: ", tokens)
         check_gram_index(index, tokens)
 
         with NamedTemporaryFile() as idx:

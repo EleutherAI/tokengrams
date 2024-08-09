@@ -2,7 +2,7 @@ extern crate quickcheck;
 extern crate utf16_literal;
 
 use quickcheck::{QuickCheck, Testable};
-use tokengrams::{InMemoryIndex, SuffixTable};
+use tokengrams::{SuffixTable, InMemoryIndex};
 use utf16_literal::utf16;
 
 fn sais(text: &str) -> SuffixTable {
@@ -267,4 +267,16 @@ fn smoothed_probs_empty_query_exists() {
     let residual = (probs.iter().sum::<f64>() - 1.0).abs();
 
     assert!(residual < 1e-4);
+}
+
+use tokengrams::MemmapIndex;
+
+#[test]
+fn memmap_index_test() {
+    let text_path = "/mnt/ssd-1/pile-ngrams-tokens/document-00010-of-00020.bin";
+    let table_path = "/mnt/ssd-1/pile-suffix-arrays/suffix_array_10.idx";
+    
+    let index = MemmapIndex::new(text_path.to_string(), table_path.to_string(), u16::MAX as usize + 1).expect("error creating index");
+    println!("is_sorted: {:?}", index.is_sorted());
+    println!("count: {:?}", index.count(vec![247]));
 }
