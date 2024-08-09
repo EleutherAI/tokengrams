@@ -8,13 +8,6 @@ class InMemoryIndex:
     def from_token_file(path: str, token_limit: int | None = None, vocab: int = 2**16, verbose: bool = False) -> "InMemoryIndex":
         """Construct a `InMemoryIndex` from a file containing raw little-endian tokens."""
 
-
-    def save_table(self, table_path: str) -> None:
-        """Save the index's suffix table to a file as u16 tokens."""
-
-    def save(self, path: str) -> None:
-        """Save the index in bincode format."""
-
     def is_sorted(self) -> bool:
         """Check if the index's suffix table is sorted lexicographically. 
         This is always true for valid indices."""

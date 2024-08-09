@@ -79,10 +79,6 @@ impl<T: Unsigned> MmapSliceMut<T> {
             _element_type: PhantomData,
         })
     }
-
-    pub fn flush(&self) -> std::io::Result<()> {
-        self.mmap.flush()
-    }
 }
 
 impl<T: Unsigned> Deref for MmapSliceMut<T> {

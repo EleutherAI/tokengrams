@@ -268,37 +268,3 @@ fn smoothed_probs_empty_query_exists() {
 
     assert!(residual < 1e-4);
 }
-
-#[test]
-fn test_save_and_load_table() {
-    use tokengrams::mmap_slice::MmapSlice;
-    use std::fs;
-
-    // Create a temporary directory for our test file
-    let temp_dir = std::env::temp_dir().join("test_inmemoryindex_save");
-    fs::create_dir_all(&temp_dir).expect("Failed to create temp dir");
-    let file_path = temp_dir.join("test_table.bin");
-
-    // Create a sample text and index
-    let sample_text = "abcdefghijklmnopqrstuvwxyz";
-    let s = utf16_as_usize(sample_text);
-    let index = InMemoryIndex::new(s.clone(), None, false);
-
-    // Save the table
-    let path = file_path.to_str().unwrap().to_string();
-    match index.save_table(path) {
-        Ok(_) => println!("Table saved successfully"),
-        Err(e) => panic!("Failed to save table: {:?}", e),
-    }
-    // Load the saved table
-    let loaded_mmap = MmapSlice::<u64>::new(&fs::File::open(&file_path).unwrap())
-        .expect("Failed to memory map the saved file");
-
-    // Verify the contents
-    let loaded_table = loaded_mmap.as_slice();
-    
-    println!("Loaded table: {:?}", loaded_table);
-
-    // Clean up
-    fs::remove_dir_all(temp_dir).expect("Failed to clean up temp dir");
-}
