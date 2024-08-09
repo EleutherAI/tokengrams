@@ -4,7 +4,9 @@ use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
+use std::fs::OpenOptions;
 
+use crate::mmap_slice::{MmapSliceMut, MmapSlice};
 use crate::sample::{KneserNeyCache, Sample};
 use crate::table::SuffixTable;
 use crate::util::transmute_slice;
@@ -132,6 +134,31 @@ impl InMemoryIndex {
         })
     }
 
+    pub fn save(&self, path: String) -> PyResult<()> {
+        // TODO: handle errors here
+        let bytes = serialize(&self.table).unwrap();
+        std::fs::write(&path, bytes)?;
+        Ok(())
+    }
+
+    pub fn save_table(&self, table_path: String) -> Result<()> {
+        let table = self.table.get_table();
+        println!("table len: {}, {:?}", table.len(), table);
+        let table_file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&table_path)?;
+
+        table_file.set_len((table.len() * 8) as u64)?;
+
+        let mut table_mmap = MmapSliceMut::<u64>::new(&table_file)?;
+        table_mmap.copy_from_slice(table);
+        table_mmap.flush()?;
+
+        Ok(())
+    }
+
     pub fn is_sorted(&self) -> bool {
         self.table.is_sorted()
     }
@@ -154,13 +181,6 @@ impl InMemoryIndex {
 
     pub fn batch_count_next(&self, queries: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
         self.table.batch_count_next(&queries)
-    }
-
-    pub fn save(&self, path: String) -> PyResult<()> {
-        // TODO: handle errors here
-        let bytes = serialize(&self.table).unwrap();
-        std::fs::write(&path, bytes)?;
-        Ok(())
     }
 
     /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
