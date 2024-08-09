@@ -2,7 +2,7 @@ extern crate quickcheck;
 extern crate utf16_literal;
 
 use quickcheck::{QuickCheck, Testable};
-use tokengrams::{InMemoryIndex, SuffixTable};
+use tokengrams::{SuffixTable, InMemoryIndex};
 use utf16_literal::utf16;
 
 fn sais(text: &str) -> SuffixTable {

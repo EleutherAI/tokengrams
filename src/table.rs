@@ -332,120 +332,22 @@ where
         self.recurse_count_ngrams(range_start, range_end, 1, &[], n, &mut count_map);
         count_map
     }
-}
 
-// PyClass interface with the generic Unsigned type replaced with usize.
-pub trait Table {
-    /// Checks if the suffix table is lexicographically sorted. This is always true for valid suffix tables.
-    fn is_sorted(&self) -> bool;
-
-    /// Returns true if and only if `query` is in text.
-    ///
-    /// This runs in `O(mlogn)` time, where `m == query.len()` and
-    /// `n == self.len()`. (As far as this author knows, this is the best known
-    /// bound for a plain suffix table.)
-    ///
-    /// You should prefer this over `positions` when you only need to test
-    /// existence (because it is faster).
-    ///
-    /// # Example
-    ///
-    /// Build a suffix array of some text and test existence of a substring:
-    ///
-    /// ```rust
-    /// use tokengrams::SuffixTable;
-    /// use utf16_literal::utf16;
-    ///
-    /// let sa = SuffixTable::new(utf16!("The quick brown fox.").to_vec(), None, false);
-    /// assert!(sa.contains(utf16!("quick")));
-    /// ```
-    #[allow(dead_code)]
-    fn contains(&self, query: &[usize]) -> bool;
-
-    /// Returns an unordered list of positions where `query` starts in `text`.
-    ///
-    /// This runs in `O(mlogn)` time, where `m == query.len()` and
-    /// `n == self.len()`. (As far as this author knows, this is the best known
-    /// bound for a plain suffix table.)
-    ///
-    /// Positions are byte indices into `text`.
-    ///
-    /// If you just need to test existence, then use `contains` since it is
-    /// faster.
-    ///
-    /// # Example
-    ///
-    /// Build a suffix array of some text and find all occurrences of a
-    /// substring:
-    ///
-    /// ```rust
-    /// use tokengrams::SuffixTable;
-    /// use utf16_literal::utf16;
-    ///
-    /// let sa = SuffixTable::new(utf16!("The quick brown fox was very quick.").to_vec(), None, false);
-    /// assert_eq!(sa.positions(utf16!("quick")), &[4, 29]);
-    /// ```
-    #[allow(dead_code)]
-    fn positions(&self, query: &[usize]) -> &[u64];
-
-    // Count occurrences of each token directly following the query sequence.
-    fn count_next(&self, query: &[usize]) -> Vec<usize>;
-
-    fn batch_count_next(&self, queries: &[Vec<usize>]) -> Vec<Vec<usize>>;
-
-    // For a given n, produce a map from an occurrence count to the number of unique n-grams with that occurrence count.
-    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize>;
-
-    fn get_table(&self) -> &[u64];
-}
-
-impl<T, U, E> Table for SuffixTable<T, U>
-where
-    T: Deref<Target = [E]> + Sync,
-    U: Deref<Target = [u64]> + Sync,
-    E: Unsigned,
-{
-    fn is_sorted(&self) -> bool {
-        self.is_sorted()
-    }
-
-    fn contains(&self, query: &[usize]) -> bool {
-        let query: Vec<E> = query.iter()
-            .filter_map(|&item| E::try_from(item).ok())
-            .collect();
-        self.contains(&query)
-    }
-
-    fn positions(&self, query: &[usize]) -> &[u64] {
-        let query: Vec<E> = query.iter()
-            .filter_map(|&item| E::try_from(item).ok())
-            .collect();
-        self.positions(&query)
-    }
-
-    fn count_next(&self, query: &[usize]) -> Vec<usize> {
-        let query: Vec<E> = query.iter()
-            .filter_map(|&item| E::try_from(item).ok())
-            .collect();
-        self.count_next(&query)
-    }
-
-    fn batch_count_next(&self, queries: &[Vec<usize>]) -> Vec<Vec<usize>> {
+    pub fn batch_count_next(&self, queries: &[Vec<E>]) -> Vec<Vec<usize>> {
         queries
             .into_par_iter()
-            .map(|query| {
-                <Self as Table>::count_next(self, query.as_slice())
-            })
+            .map(|query| self.count_next(query))
             .collect()
     }
 
-    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
-        self.count_ngrams(n)
+    pub fn get_table(&self) -> &[u64] {
+        &self.table
     }
 
-    fn get_table(&self) -> &[u64] {
-        self.table.deref()
+    pub fn get_text(&self) -> &[E] {
+        &self.text
     }
+
 }
 
 impl fmt::Debug for SuffixTable {
@@ -519,15 +421,11 @@ mod tests {
         let sa = sais("aaab");
 
         let queries: Vec<Vec<u16>> = vec![vec![utf16!("a")[0]; 1]; 10_000];
-        let queries_usize: Vec<Vec<usize>> = queries
-            .into_iter()
-            .map(|inner_vec| inner_vec.into_iter().map(|x| x as usize).collect())
-            .collect();
 
         let a_index = utf16!("a")[0] as usize;
         let b_index = utf16!("b")[0] as usize;
 
-        assert_eq!(2, sa.batch_count_next(&queries_usize)[0][a_index]);
-        assert_eq!(1, sa.batch_count_next(&queries_usize)[0][b_index]);
+        assert_eq!(2, sa.batch_count_next(&queries)[0][a_index]);
+        assert_eq!(1, sa.batch_count_next(&queries)[0][b_index]);
     }
 }

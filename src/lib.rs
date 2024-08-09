@@ -8,10 +8,13 @@ pub use table::SuffixTable;
 use pyo3::prelude::*;
 
 mod in_memory_index;
+mod in_memory_index_rs;
 mod memmap_index;
+mod memmap_index_rs;
 mod par_quicksort;
 mod sample;
 mod sharded_memmap_index;
+mod sharded_memmap_index_rs;
 mod table;
 mod util;
 
