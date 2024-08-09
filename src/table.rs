@@ -395,6 +395,8 @@ pub trait Table {
 
     // For a given n, produce a map from an occurrence count to the number of unique n-grams with that occurrence count.
     fn count_ngrams(&self, n: usize) -> HashMap<usize, usize>;
+
+    fn get_table(&self) -> &[u64];
 }
 
 #[typetag::serialize]
@@ -448,6 +450,10 @@ where
 
     fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
         self.count_ngrams(n)
+    }
+
+    fn get_table(&self) -> &[u64] {
+        &self.table.deref()
     }
 }
 
