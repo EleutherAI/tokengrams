@@ -75,12 +75,12 @@ impl InMemoryIndex {
         }
     }
 
-    pub fn save_text(&self, text_path: String) -> Result<()> {
-        self.index.save_text(text_path)
+    pub fn save_text(&self, path: String) -> Result<()> {
+        self.index.save_text(path)
     }
 
-    pub fn save_table(&self, table_path: String) -> Result<()> {
-        self.index.save_table(table_path)
+    pub fn save_table(&self, path: String) -> Result<()> {
+        self.index.save_table(path)
     }
 
     pub fn is_sorted(&self) -> bool {

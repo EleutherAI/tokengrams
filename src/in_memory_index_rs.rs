@@ -13,8 +13,8 @@ use crate::table::SuffixTable;
 use crate::util::transmute_slice;
 
 pub trait InMemoryIndexTrait {
-    fn save_text(&self, text_path: String) -> Result<()>;
-    fn save_table(&self, table_path: String) -> Result<()>;
+    fn save_text(&self, path: String) -> Result<()>;
+    fn save_table(&self, path: String) -> Result<()>;
     fn is_sorted(&self) -> bool;
     fn contains(&self, query: Vec<usize>) -> bool;
     fn positions(&self, query: Vec<usize>) -> Vec<u64>;
@@ -117,13 +117,13 @@ impl<T: Unsigned + Debug> InMemoryIndexRs<T> {
         })
     }
 
-    pub fn save_text(&self, text_path: String) -> Result<()> {
+    pub fn save_text(&self, path: String) -> Result<()> {
         let text = self.table.get_text();
         let file = OpenOptions::new()
         .create(true)
         .read(true)
         .write(true)
-        .open(&text_path)?;
+        .open(&path)?;
 
         let file_len = text.len() * std::mem::size_of::<T>();
         file.set_len(file_len as u64)?;
@@ -135,13 +135,13 @@ impl<T: Unsigned + Debug> InMemoryIndexRs<T> {
         Ok(())
     }
 
-    pub fn save_table(&self, table_path: String) -> Result<()> {
+    pub fn save_table(&self, path: String) -> Result<()> {
         let table = self.table.get_table();
         let file = OpenOptions::new()
         .create(true)
         .read(true)
         .write(true)
-        .open(&table_path)?;
+        .open(&path)?;
 
         file.set_len((table.len() * 8) as u64)?;
 

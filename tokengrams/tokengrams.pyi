@@ -49,8 +49,11 @@ class InMemoryIndex:
         for models of order n and below with improved estimates over the entire index.
         https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16."""
 
-    def save(self, path: str):
-        """Save the index to disk."""
+    def save_text(self, path: str):
+        """Save the tokens to disk."""
+
+    def save_table(self, path: str):
+        """Save the sorted table to disk."""
 
 class MemmapIndex:
     """An n-gram index backed by a memory-mapped file."""
