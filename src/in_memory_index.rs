@@ -1,154 +1,276 @@
 use anyhow::Result;
 use pyo3::prelude::*;
-use crate::in_memory_index_rs::InMemoryIndexTrait;
-use crate::in_memory_index_rs::InMemoryIndexRs;
+use std::collections::HashMap;
+use std::fs::{File, OpenOptions};
+use funty::Unsigned;
+use std::io::Read;
+use rayon::prelude::*;
+use std::fmt::Debug;
+
+use crate::mmap_slice::MmapSliceMut;
+use crate::sample::{KneserNeyCache, Sample};
+use crate::table::SuffixTable;
+use crate::util::transmute_slice;
+use crate::bindings::in_memory_index::InMemoryIndexTrait;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
-/// Non-generic PyO3 wrapper over InMemoryIndexRs.
-#[pyclass]
-pub struct InMemoryIndex {
-    index: Box<dyn InMemoryIndexTrait + Send + Sync>
+pub struct InMemoryIndexRs<T: Unsigned> {
+    table: SuffixTable<Box<[T]>, Box<[u64]>>,
+    cache: KneserNeyCache
 }
 
-impl InMemoryIndex {
-    pub fn new(tokens: Vec<usize>, vocab: Option<usize>, verbose: bool) -> Self {
+impl<T: Unsigned + Debug> InMemoryIndexRs<T> {
+    pub fn new(tokens: Vec<T>, vocab: Option<usize>, verbose: bool) -> Self {
         let vocab = vocab.unwrap_or(u16::MAX as usize + 1);
     
-        let index: Box<dyn InMemoryIndexTrait + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
-            let tokens: Vec<u16> = tokens.iter().map(|&x| x as u16).collect();
-            Box::new(InMemoryIndexRs::<u16>::new(tokens, Some(vocab), verbose))
-        } else {
-            let tokens: Vec<u32> = tokens.iter().map(|&x| x as u32).collect();
-            Box::new(InMemoryIndexRs::<u32>::new(tokens, Some(vocab), verbose))
-        };
+        let table = SuffixTable::new(tokens, Some(vocab), verbose);
+        debug_assert!(table.is_sorted());
 
-        InMemoryIndex {
-            index,
+        InMemoryIndexRs {
+            table,
+            cache: KneserNeyCache::default(),
         }
     }
-}
 
-#[pymethods]
-impl InMemoryIndex {
-    #[new]
-    #[pyo3(signature = (tokens, vocab=u16::MAX as usize + 1, verbose=false))]
-    pub fn new_py(_py: Python, tokens: Vec<usize>, vocab: usize, verbose: bool) -> Self {
+    pub fn from_token_file(
+        path: String,
+        token_limit: Option<usize>,
+        vocab: usize,
+        verbose: bool,
+    ) -> PyResult<Self> {
+        let mut buffer = Vec::new();
+        let mut file = File::open(&path)?;
+
+        if let Some(max_tokens) = token_limit {
+            // Limit on the number of tokens to consider is provided
+            let max_bytes = max_tokens * std::mem::size_of::<T>();
+            file.take(max_bytes as u64).read_to_end(&mut buffer)?;
+        } else {
+            file.read_to_end(&mut buffer)?;
+        };
+
+        let tokens = transmute_slice::<u8, T>(buffer.as_slice());
+        let table = SuffixTable::new(tokens, Some(vocab), verbose);
+        debug_assert!(table.is_sorted());
+
+        Ok(InMemoryIndexRs {
+            table,
+            cache: KneserNeyCache::default()
+        })
+    }
+
+    fn read_file_to_boxed_slice<E: Unsigned>(path: &str) -> Result<Box<[E]>> {
+        let mut file = File::open(path)?;
+        let file_len = file.metadata()?.len() as usize;
     
-        let index: Box<dyn InMemoryIndexTrait + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
-            let tokens: Vec<u16> = tokens.iter().map(|&x| x as u16).collect();
-            Box::new(InMemoryIndexRs::<u16>::new(tokens, Some(vocab), verbose))
-        } else {
-            let tokens: Vec<u32> = tokens.iter().map(|&x| x as u32).collect();
-            Box::new(InMemoryIndexRs::<u32>::new(tokens, Some(vocab), verbose))
-        };
-
-        InMemoryIndex {
-            index,
+        // Ensure file size is a multiple of size of E
+        if file_len % std::mem::size_of::<T>() != 0 {
+            anyhow::bail!("File size is not a multiple of element size");
         }
+    
+        let num_elements = file_len / std::mem::size_of::<E>();
+        let mut vec: Vec<E> = Vec::with_capacity(num_elements);
+        unsafe {
+            let buf = std::slice::from_raw_parts_mut(vec.as_mut_ptr() as *mut u8, file_len);
+            file.read_exact(buf)?;
+            vec.set_len(num_elements);
+        }
+    
+        Ok(vec.into_boxed_slice())
     }
 
-    #[staticmethod]
-    #[pyo3(signature = (path, token_limit=None, vocab=u16::MAX as usize + 1, verbose=false))]
-    pub fn from_token_file(path: String, token_limit: Option<usize>, vocab: usize, verbose: bool) -> Result<Self> {
-        if vocab <= u16::MAX as usize + 1 {
-            Ok(InMemoryIndex {
-                index: Box::new(InMemoryIndexRs::<u16>::from_token_file(path, token_limit, vocab, verbose)?)
-            })
-        } else {
-            Ok(InMemoryIndex {
-                index: Box::new(InMemoryIndexRs::<u32>::from_token_file(path, token_limit, vocab, verbose)?)
-            })
-        }
-    }
+    pub fn from_disk(
+        text_path: String, 
+        table_path: String,
+        vocab: usize,
+    ) -> PyResult<Self> {
+        let text = Self::read_file_to_boxed_slice::<T>(&text_path)?;
+        let table = Self::read_file_to_boxed_slice::<u64>(&table_path)?;
 
-    #[staticmethod]
-    #[pyo3(signature = (text_path, table_path, vocab=u16::MAX as usize + 1))]
-    pub fn from_disk(text_path: String, table_path: String, vocab: usize,) -> Result<Self> {
-        if vocab <= u16::MAX as usize + 1 {
-            Ok(InMemoryIndex {
-                index: Box::new(InMemoryIndexRs::<u16>::from_disk(text_path, table_path, vocab)?)
-            })
-        } else {
-            Ok(InMemoryIndex {
-                index: Box::new(InMemoryIndexRs::<u32>::from_disk(text_path, table_path, vocab)?)
-            })
-        }
+        let suffix_table = SuffixTable::from_parts(text, table, Some(vocab));
+        debug_assert!(suffix_table.is_sorted());
+
+        Ok(InMemoryIndexRs {
+            table: suffix_table,
+            cache: KneserNeyCache::default()
+        })
     }
 
     pub fn save_text(&self, path: String) -> Result<()> {
-        self.index.save_text(path)
+        let text = self.table.get_text();
+        let file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&path)?;
+
+        let file_len = text.len() * std::mem::size_of::<T>();
+        file.set_len(file_len as u64)?;
+
+        let mut mmap = MmapSliceMut::<T>::new(&file)?;
+        mmap.copy_from_slice(text);
+        mmap.flush()?;
+
+        Ok(())
     }
 
     pub fn save_table(&self, path: String) -> Result<()> {
-        self.index.save_table(path)
+        let table = self.table.get_table();
+        let file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&path)?;
+
+        file.set_len((table.len() * 8) as u64)?;
+
+        let mut mmap = MmapSliceMut::<u64>::new(&file)?;
+        mmap.copy_from_slice(table);
+        mmap.flush()?;
+
+        Ok(())
+    }
+}
+
+impl<T: Unsigned> Sample<T> for InMemoryIndexRs<T> {
+    fn get_cache(&self) -> &KneserNeyCache {
+        &self.cache
     }
 
-    pub fn is_sorted(&self) -> bool {
-        self.index.is_sorted()
+    fn get_mut_cache(&mut self) -> &mut KneserNeyCache {
+        &mut self.cache
     }
 
-    pub fn contains(&self, query: Vec<usize>) -> bool {
-        self.index.contains(query)
+    fn count_next_slice(&self, query: &[T]) -> Vec<usize> {
+        self.table.count_next(query)
     }
 
-    pub fn positions(&self, query: Vec<usize>) -> Vec<u64> {
-        self.index.positions(query).to_vec()
+    fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
+        self.table.count_ngrams(n)
+    }
+}
+
+impl<T: Unsigned> InMemoryIndexTrait for InMemoryIndexRs<T> {
+    fn save_table(&self, table_path: String) -> Result<()> {
+        self.save_table(table_path)
     }
 
-    pub fn count(&self, query: Vec<usize>) -> usize {
-        self.index.positions(query).len()
+    fn save_text(&self, text_path: String) -> Result<()> {
+        self.save_text(text_path)
     }
 
-    pub fn count_next(&self, query: Vec<usize>) -> Vec<usize> {
-        self.index.count_next(query)
+    fn is_sorted(&self) -> bool {
+        self.table.is_sorted()
     }
 
-    pub fn batch_count_next(&self, queries: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
-        self.index.batch_count_next(queries)
+    fn contains(&self, query: Vec<usize>) -> bool {
+        let query: Vec<T> = query.iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+        self.table.contains(&query)
     }
 
-    /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
-    pub fn sample_unsmoothed(
+    fn positions(&self, query: Vec<usize>) -> Vec<u64> {
+        let query: Vec<T> = query.iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+        self.table.positions(&query).to_vec()
+    }
+
+    fn count(&self, query: Vec<usize>) -> usize {
+        let query: Vec<T> = query.iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+        self.table.positions(&query).len()
+    }
+
+    fn count_next(&self, query: Vec<usize>) -> Vec<usize> {
+        let query: Vec<T> = query.iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+        self.table.count_next(&query)
+    }
+
+    fn batch_count_next(&self, queries: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+        queries
+            .into_par_iter()
+            .map(|query| {
+                self.count_next(query)
+            })
+            .collect()
+    }
+
+    fn sample_smoothed(
+        &mut self,
+        query: Vec<usize>,
+        n: usize,
+        k: usize,
+        num_samples: usize
+    ) -> Result<Vec<Vec<usize>>> {
+        let query: Vec<T> = query.iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+
+        let samples_batch = <Self as Sample<T>>::sample_smoothed(self, &query, n, k, num_samples)?;
+        Ok(samples_batch.into_iter().map(|samples| {
+            samples.into_iter()
+                .filter_map(|sample| {
+                    match TryInto::<usize>::try_into(sample) {
+                        Ok(value) => Some(value),
+                        Err(_) => None, // Silently skip values that can't be converted
+                    }
+                })
+                .collect::<Vec<usize>>()
+        }).collect())
+    }
+
+    fn sample_unsmoothed(
         &self,
         query: Vec<usize>,
         n: usize,
         k: usize,
         num_samples: usize
     ) -> Result<Vec<Vec<usize>>> {
-        self.index.sample_unsmoothed(query, n, k, num_samples)
+        let query: Vec<T> = query.iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+
+        let samples_batch = <Self as Sample<T>>::sample_unsmoothed(self, &query, n, k, num_samples)?;
+        Ok(samples_batch.into_iter().map(|samples| {
+            samples.into_iter()
+                .filter_map(|sample| {
+                    match TryInto::<usize>::try_into(sample) {
+                        Ok(value) => Some(value),
+                        Err(_) => None, // Silently skip values that can't be converted
+                    }
+                })
+                .collect::<Vec<usize>>()
+        }).collect())
     }
 
-    /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
-    /// tokens in the query.
-    pub fn get_smoothed_probs(&mut self, query: Vec<usize>) -> Vec<f64> {
-        self.index.get_smoothed_probs(query)
+    fn get_smoothed_probs(&mut self, query: Vec<usize>) -> Vec<f64> {
+        let query: Vec<T> = query.iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+
+            <Self as Sample<T>>::get_smoothed_probs(self, &query)
     }
 
-    /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
-    /// tokens in the query.
-    pub fn batch_get_smoothed_probs(
+    fn batch_get_smoothed_probs(
         &mut self,
         queries: Vec<Vec<usize>>
     ) -> Vec<Vec<f64>> {
-        self.index.batch_get_smoothed_probs(queries)
+        let queries: Vec<Vec<T>> = queries.into_iter()
+            .map(|query| {
+                query.iter()
+                    .filter_map(|&item| T::try_from(item).ok())
+                    .collect()
+            })
+            .collect();
+        <Self as Sample<T>>::batch_get_smoothed_probs(self, &queries) 
     }
 
-    /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
-    pub fn sample_smoothed(
-        &mut self,
-        query: Vec<usize>,
-        n: usize,
-        k: usize,
-        num_samples: usize
-    ) -> Result<Vec<Vec<usize>>> {
-        self.index.sample_smoothed(query, n, k, num_samples)
-    }
-
-    /// Warning: O(k**n) where k is vocabulary size, use with caution.
-    /// Improve smoothed model quality by replacing the default delta hyperparameters
-    /// for models of order n and below with improved estimates over the entire index.
-    /// https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16."""
-    pub fn estimate_deltas(&mut self, n: usize) {
-        self.index.estimate_deltas(n);
+    fn estimate_deltas(&mut self, n: usize) {
+        <Self as Sample<T>>::estimate_deltas(self, n)
     }
 }
