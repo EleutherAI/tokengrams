@@ -1,28 +1,28 @@
 use anyhow::Result;
-use pyo3::prelude::*;
-use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
 use funty::Unsigned;
-use std::io::Read;
+use pyo3::prelude::*;
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::fmt::Debug;
+use std::fs::{File, OpenOptions};
+use std::io::Read;
 
+use crate::bindings::in_memory_index::InMemoryIndexTrait;
 use crate::mmap_slice::MmapSliceMut;
 use crate::sample::{KneserNeyCache, Sample};
 use crate::table::SuffixTable;
 use crate::util::transmute_slice;
-use crate::bindings::in_memory_index::InMemoryIndexTrait;
 
 /// An in-memory index exposes suffix table functionality over text corpora small enough to fit in memory.
 pub struct InMemoryIndexRs<T: Unsigned> {
     table: SuffixTable<Box<[T]>, Box<[u64]>>,
-    cache: KneserNeyCache
+    cache: KneserNeyCache,
 }
 
 impl<T: Unsigned + Debug> InMemoryIndexRs<T> {
     pub fn new(tokens: Vec<T>, vocab: Option<usize>, verbose: bool) -> Self {
         let vocab = vocab.unwrap_or(u16::MAX as usize + 1);
-    
+
         let table = SuffixTable::new(tokens, Some(vocab), verbose);
         debug_assert!(table.is_sorted());
 
@@ -55,19 +55,19 @@ impl<T: Unsigned + Debug> InMemoryIndexRs<T> {
 
         Ok(InMemoryIndexRs {
             table,
-            cache: KneserNeyCache::default()
+            cache: KneserNeyCache::default(),
         })
     }
 
     fn read_file_to_boxed_slice<E: Unsigned>(path: &str) -> Result<Box<[E]>> {
         let mut file = File::open(path)?;
         let file_len = file.metadata()?.len() as usize;
-    
+
         // Ensure file size is a multiple of size of E
         if file_len % std::mem::size_of::<T>() != 0 {
             anyhow::bail!("File size is not a multiple of element size");
         }
-    
+
         let num_elements = file_len / std::mem::size_of::<E>();
         let mut vec: Vec<E> = Vec::with_capacity(num_elements);
         unsafe {
@@ -75,15 +75,11 @@ impl<T: Unsigned + Debug> InMemoryIndexRs<T> {
             file.read_exact(buf)?;
             vec.set_len(num_elements);
         }
-    
+
         Ok(vec.into_boxed_slice())
     }
 
-    pub fn from_disk(
-        text_path: String, 
-        table_path: String,
-        vocab: usize,
-    ) -> PyResult<Self> {
+    pub fn from_disk(text_path: String, table_path: String, vocab: usize) -> PyResult<Self> {
         let text = Self::read_file_to_boxed_slice::<T>(&text_path)?;
         let table = Self::read_file_to_boxed_slice::<u64>(&table_path)?;
 
@@ -92,17 +88,17 @@ impl<T: Unsigned + Debug> InMemoryIndexRs<T> {
 
         Ok(InMemoryIndexRs {
             table: suffix_table,
-            cache: KneserNeyCache::default()
+            cache: KneserNeyCache::default(),
         })
     }
 
     pub fn save_text(&self, path: String) -> Result<()> {
         let text = self.table.get_text();
         let file = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .open(&path)?;
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&path)?;
 
         let file_len = text.len() * std::mem::size_of::<T>();
         file.set_len(file_len as u64)?;
@@ -117,10 +113,10 @@ impl<T: Unsigned + Debug> InMemoryIndexRs<T> {
     pub fn save_table(&self, path: String) -> Result<()> {
         let table = self.table.get_table();
         let file = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .open(&path)?;
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&path)?;
 
         file.set_len((table.len() * 8) as u64)?;
 
@@ -164,28 +160,32 @@ impl<T: Unsigned> InMemoryIndexTrait for InMemoryIndexRs<T> {
     }
 
     fn contains(&self, query: Vec<usize>) -> bool {
-        let query: Vec<T> = query.iter()
+        let query: Vec<T> = query
+            .iter()
             .filter_map(|&item| T::try_from(item).ok())
             .collect();
         self.table.contains(&query)
     }
 
     fn positions(&self, query: Vec<usize>) -> Vec<u64> {
-        let query: Vec<T> = query.iter()
+        let query: Vec<T> = query
+            .iter()
             .filter_map(|&item| T::try_from(item).ok())
             .collect();
         self.table.positions(&query).to_vec()
     }
 
     fn count(&self, query: Vec<usize>) -> usize {
-        let query: Vec<T> = query.iter()
+        let query: Vec<T> = query
+            .iter()
             .filter_map(|&item| T::try_from(item).ok())
             .collect();
         self.table.positions(&query).len()
     }
 
     fn count_next(&self, query: Vec<usize>) -> Vec<usize> {
-        let query: Vec<T> = query.iter()
+        let query: Vec<T> = query
+            .iter()
             .filter_map(|&item| T::try_from(item).ok())
             .collect();
         self.table.count_next(&query)
@@ -194,9 +194,7 @@ impl<T: Unsigned> InMemoryIndexTrait for InMemoryIndexRs<T> {
     fn batch_count_next(&self, queries: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
         queries
             .into_par_iter()
-            .map(|query| {
-                self.count_next(query)
-            })
+            .map(|query| self.count_next(query))
             .collect()
     }
 
@@ -205,23 +203,28 @@ impl<T: Unsigned> InMemoryIndexTrait for InMemoryIndexRs<T> {
         query: Vec<usize>,
         n: usize,
         k: usize,
-        num_samples: usize
+        num_samples: usize,
     ) -> Result<Vec<Vec<usize>>> {
-        let query: Vec<T> = query.iter()
+        let query: Vec<T> = query
+            .iter()
             .filter_map(|&item| T::try_from(item).ok())
             .collect();
 
         let samples_batch = <Self as Sample<T>>::sample_smoothed(self, &query, n, k, num_samples)?;
-        Ok(samples_batch.into_iter().map(|samples| {
-            samples.into_iter()
-                .filter_map(|sample| {
-                    match TryInto::<usize>::try_into(sample) {
-                        Ok(value) => Some(value),
-                        Err(_) => None, // Silently skip values that can't be converted
-                    }
-                })
-                .collect::<Vec<usize>>()
-        }).collect())
+        Ok(samples_batch
+            .into_iter()
+            .map(|samples| {
+                samples
+                    .into_iter()
+                    .filter_map(|sample| {
+                        match TryInto::<usize>::try_into(sample) {
+                            Ok(value) => Some(value),
+                            Err(_) => None, // Silently skip values that can't be converted
+                        }
+                    })
+                    .collect::<Vec<usize>>()
+            })
+            .collect())
     }
 
     fn sample_unsmoothed(
@@ -229,45 +232,51 @@ impl<T: Unsigned> InMemoryIndexTrait for InMemoryIndexRs<T> {
         query: Vec<usize>,
         n: usize,
         k: usize,
-        num_samples: usize
+        num_samples: usize,
     ) -> Result<Vec<Vec<usize>>> {
-        let query: Vec<T> = query.iter()
+        let query: Vec<T> = query
+            .iter()
             .filter_map(|&item| T::try_from(item).ok())
             .collect();
 
-        let samples_batch = <Self as Sample<T>>::sample_unsmoothed(self, &query, n, k, num_samples)?;
-        Ok(samples_batch.into_iter().map(|samples| {
-            samples.into_iter()
-                .filter_map(|sample| {
-                    match TryInto::<usize>::try_into(sample) {
-                        Ok(value) => Some(value),
-                        Err(_) => None, // Silently skip values that can't be converted
-                    }
-                })
-                .collect::<Vec<usize>>()
-        }).collect())
+        let samples_batch =
+            <Self as Sample<T>>::sample_unsmoothed(self, &query, n, k, num_samples)?;
+        Ok(samples_batch
+            .into_iter()
+            .map(|samples| {
+                samples
+                    .into_iter()
+                    .filter_map(|sample| {
+                        match TryInto::<usize>::try_into(sample) {
+                            Ok(value) => Some(value),
+                            Err(_) => None, // Silently skip values that can't be converted
+                        }
+                    })
+                    .collect::<Vec<usize>>()
+            })
+            .collect())
     }
 
     fn get_smoothed_probs(&mut self, query: Vec<usize>) -> Vec<f64> {
-        let query: Vec<T> = query.iter()
+        let query: Vec<T> = query
+            .iter()
             .filter_map(|&item| T::try_from(item).ok())
             .collect();
 
-            <Self as Sample<T>>::get_smoothed_probs(self, &query)
+        <Self as Sample<T>>::get_smoothed_probs(self, &query)
     }
 
-    fn batch_get_smoothed_probs(
-        &mut self,
-        queries: Vec<Vec<usize>>
-    ) -> Vec<Vec<f64>> {
-        let queries: Vec<Vec<T>> = queries.into_iter()
+    fn batch_get_smoothed_probs(&mut self, queries: Vec<Vec<usize>>) -> Vec<Vec<f64>> {
+        let queries: Vec<Vec<T>> = queries
+            .into_iter()
             .map(|query| {
-                query.iter()
+                query
+                    .iter()
                     .filter_map(|&item| T::try_from(item).ok())
                     .collect()
             })
             .collect();
-        <Self as Sample<T>>::batch_get_smoothed_probs(self, &queries) 
+        <Self as Sample<T>>::batch_get_smoothed_probs(self, &queries)
     }
 
     fn estimate_deltas(&mut self, n: usize) {

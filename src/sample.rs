@@ -1,11 +1,11 @@
 use anyhow::Result;
+use funty::Unsigned;
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::thread_rng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Mul;
-use funty::Unsigned;
 
 #[derive(Clone, Deserialize, Serialize, Default)]
 pub struct KneserNeyCache {
@@ -30,7 +30,7 @@ pub trait Sample<T: Unsigned>: Send + Sync {
         query: &[T],
         n: usize,
         k: usize,
-        num_samples: usize
+        num_samples: usize,
     ) -> Result<Vec<Vec<T>>> {
         (0..num_samples)
             .into_par_iter()
@@ -50,8 +50,11 @@ pub trait Sample<T: Unsigned>: Send + Sync {
 
             let counts = self.count_next_slice(prev);
             let dist = WeightedIndex::new(&counts)?;
-            let sampled_index: T = dist.sample(&mut rng).try_into().unwrap_or_else(|_| panic!("Sampled token > T::MAX"));
-            
+            let sampled_index: T = dist
+                .sample(&mut rng)
+                .try_into()
+                .unwrap_or_else(|_| panic!("Sampled token > T::MAX"));
+
             sequence.push(sampled_index);
         }
 
@@ -68,10 +71,7 @@ pub trait Sample<T: Unsigned>: Send + Sync {
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    fn batch_get_smoothed_probs(
-        &mut self,
-        queries: &[Vec<T>]
-    ) -> Vec<Vec<f64>> {
+    fn batch_get_smoothed_probs(&mut self, queries: &[Vec<T>]) -> Vec<Vec<f64>> {
         self.estimate_deltas(1);
         self.compute_smoothed_unigram_probs();
 
@@ -87,7 +87,7 @@ pub trait Sample<T: Unsigned>: Send + Sync {
         query: &[T],
         n: usize,
         k: usize,
-        num_samples: usize
+        num_samples: usize,
     ) -> Result<Vec<Vec<T>>> {
         self.estimate_deltas(1);
         self.compute_smoothed_unigram_probs();
@@ -155,7 +155,10 @@ pub trait Sample<T: Unsigned>: Send + Sync {
             let prev = &sequence[start..];
             let probs = self.smoothed_probs(prev);
             let dist = WeightedIndex::new(&probs)?;
-            let sampled_index: T = dist.sample(&mut rng).try_into().unwrap_or_else(|_| panic!("Sampled token > usize::MAX"));
+            let sampled_index: T = dist
+                .sample(&mut rng)
+                .try_into()
+                .unwrap_or_else(|_| panic!("Sampled token > usize::MAX"));
 
             sequence.push(sampled_index);
         }

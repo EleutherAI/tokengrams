@@ -1,11 +1,11 @@
+use crate::memmap_index::MemmapIndexRs;
 use anyhow::Result;
 use pyo3::prelude::*;
-use crate::memmap_index::MemmapIndexRs;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
 #[pyclass]
 pub struct MemmapIndex {
-    index: Box<dyn MemmapIndexTrait + Send + Sync>
+    index: Box<dyn MemmapIndexTrait + Send + Sync>,
 }
 
 /// This trait is non-generic for PyO3 compatibility. Implementing structs may cast data
@@ -18,15 +18,21 @@ pub trait MemmapIndexTrait {
     fn count_next(&self, query: Vec<usize>) -> Vec<usize>;
     fn batch_count_next(&self, queries: Vec<Vec<usize>>) -> Vec<Vec<usize>>;
     fn sample_unsmoothed(
-        &self, query: Vec<usize>, n: usize, k: usize, num_samples: usize
+        &self,
+        query: Vec<usize>,
+        n: usize,
+        k: usize,
+        num_samples: usize,
     ) -> Result<Vec<Vec<usize>>>;
     fn sample_smoothed(
-        &mut self, query: Vec<usize>, n: usize, k: usize, num_samples: usize
+        &mut self,
+        query: Vec<usize>,
+        n: usize,
+        k: usize,
+        num_samples: usize,
     ) -> Result<Vec<Vec<usize>>>;
     fn get_smoothed_probs(&mut self, query: Vec<usize>) -> Vec<f64>;
-    fn batch_get_smoothed_probs(
-        &mut self, queries: Vec<Vec<usize>>
-    ) -> Vec<Vec<f64>>;
+    fn batch_get_smoothed_probs(&mut self, queries: Vec<Vec<usize>>) -> Vec<Vec<f64>>;
     fn estimate_deltas(&mut self, n: usize);
 }
 
@@ -34,28 +40,42 @@ pub trait MemmapIndexTrait {
 impl MemmapIndex {
     #[new]
     #[pyo3(signature = (text_path, table_path, vocab=u16::MAX as usize + 1))]
-    pub fn new_py(_py: Python, text_path: String, table_path: String, vocab: usize) -> PyResult<Self> {
+    pub fn new_py(
+        _py: Python,
+        text_path: String,
+        table_path: String,
+        vocab: usize,
+    ) -> PyResult<Self> {
         if vocab <= u16::MAX as usize + 1 {
             Ok(MemmapIndex {
-                index: Box::new(MemmapIndexRs::<u16>::new(text_path, table_path, vocab)?)
+                index: Box::new(MemmapIndexRs::<u16>::new(text_path, table_path, vocab)?),
             })
         } else {
             Ok(MemmapIndex {
-                index: Box::new(MemmapIndexRs::<u32>::new(text_path, table_path, vocab)?)
+                index: Box::new(MemmapIndexRs::<u32>::new(text_path, table_path, vocab)?),
             })
         }
     }
 
     #[staticmethod]
     #[pyo3(signature = (text_path, table_path, vocab=u16::MAX as usize + 1, verbose=false))]
-    pub fn build(text_path: String, table_path: String, vocab: usize, verbose: bool) -> PyResult<Self> {
+    pub fn build(
+        text_path: String,
+        table_path: String,
+        vocab: usize,
+        verbose: bool,
+    ) -> PyResult<Self> {
         if vocab <= u16::MAX as usize + 1 {
             Ok(MemmapIndex {
-                index: Box::new(MemmapIndexRs::<u16>::build(text_path, table_path, vocab, verbose)?)
+                index: Box::new(MemmapIndexRs::<u16>::build(
+                    text_path, table_path, vocab, verbose,
+                )?),
             })
         } else {
             Ok(MemmapIndex {
-                index: Box::new(MemmapIndexRs::<u32>::build(text_path, table_path, vocab, verbose)?)
+                index: Box::new(MemmapIndexRs::<u32>::build(
+                    text_path, table_path, vocab, verbose,
+                )?),
             })
         }
     }
@@ -84,13 +104,13 @@ impl MemmapIndex {
         self.index.batch_count_next(queries)
     }
 
-   /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
-   pub fn sample_unsmoothed(
+    /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
+    pub fn sample_unsmoothed(
         &self,
         query: Vec<usize>,
         n: usize,
         k: usize,
-        num_samples: usize
+        num_samples: usize,
     ) -> Result<Vec<Vec<usize>>> {
         self.index.sample_unsmoothed(query, n, k, num_samples)
     }
@@ -103,10 +123,7 @@ impl MemmapIndex {
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    pub fn batch_get_smoothed_probs(
-        &mut self,
-        queries: Vec<Vec<usize>>
-    ) -> Vec<Vec<f64>> {
+    pub fn batch_get_smoothed_probs(&mut self, queries: Vec<Vec<usize>>) -> Vec<Vec<f64>> {
         self.index.batch_get_smoothed_probs(queries)
     }
 
@@ -116,7 +133,7 @@ impl MemmapIndex {
         query: Vec<usize>,
         n: usize,
         k: usize,
-        num_samples: usize
+        num_samples: usize,
     ) -> Result<Vec<Vec<usize>>> {
         self.index.sample_smoothed(query, n, k, num_samples)
     }
@@ -134,11 +151,11 @@ impl MemmapIndex {
     pub fn new(text_path: String, table_path: String, vocab: usize) -> Result<Self> {
         if vocab <= u16::MAX as usize + 1 {
             Ok(MemmapIndex {
-                index: Box::new(MemmapIndexRs::<u16>::new(text_path, table_path, vocab)?)
+                index: Box::new(MemmapIndexRs::<u16>::new(text_path, table_path, vocab)?),
             })
         } else {
             Ok(MemmapIndex {
-                index: Box::new(MemmapIndexRs::<u32>::new(text_path, table_path, vocab)?)
+                index: Box::new(MemmapIndexRs::<u32>::new(text_path, table_path, vocab)?),
             })
         }
     }

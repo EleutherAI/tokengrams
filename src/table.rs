@@ -1,11 +1,11 @@
 extern crate utf16_literal;
 
+use crate::par_quicksort::par_sort_unstable_by_key;
+use funty::Unsigned;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{fmt, ops::Deref, u64};
-use funty::Unsigned;
-use crate::par_quicksort::par_sort_unstable_by_key;
 
 /// A suffix table is a sequence of lexicographically sorted suffixes.
 /// The table supports n-gram statistics computation and language modeling over text corpora.
@@ -13,7 +13,7 @@ use crate::par_quicksort::par_sort_unstable_by_key;
 pub struct SuffixTable<T = Box<[u16]>, U = Box<[u64]>> {
     text: T,
     table: U,
-    vocab: usize
+    vocab: usize,
 }
 
 /// Method for vanilla in-memory suffix tables
@@ -41,7 +41,7 @@ impl<T: Unsigned> SuffixTable<Box<[T]>, Box<[u64]>> {
         SuffixTable {
             text,
             table: table.into(),
-            vocab
+            vocab,
         }
     }
 }
@@ -267,7 +267,7 @@ where
 
         let (token_start, token_end) =
             self.range_boundaries(&suffix[..query.len() + 1], search_start, search_end);
-        
+
         counts[suffix[query.len()].as_usize()] = token_end - token_start;
 
         if search_start < token_start {
@@ -347,7 +347,6 @@ where
     pub fn get_text(&self) -> &[E] {
         &self.text
     }
-
 }
 
 impl fmt::Debug for SuffixTable {

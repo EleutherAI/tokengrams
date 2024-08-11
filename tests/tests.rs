@@ -2,7 +2,7 @@ extern crate quickcheck;
 extern crate utf16_literal;
 
 use quickcheck::{QuickCheck, Testable};
-use tokengrams::{SuffixTable, InMemoryIndex};
+use tokengrams::{InMemoryIndex, SuffixTable};
 use utf16_literal::utf16;
 
 fn sais(text: &str) -> SuffixTable {
@@ -157,9 +157,7 @@ fn sample_unsmoothed_exists() {
     let a = &s[0..1];
 
     let index = InMemoryIndex::new(s.clone(), None, false);
-    let seqs = index
-        .sample_unsmoothed(a.to_vec(), 3, 10, 20)
-        .unwrap();
+    let seqs = index.sample_unsmoothed(a.to_vec(), 3, 10, 20).unwrap();
 
     assert_eq!(*seqs[0].last().unwrap(), a[0]);
     assert_eq!(*seqs[19].last().unwrap(), a[0]);
@@ -170,9 +168,7 @@ fn sample_unsmoothed_empty_query_exists() {
     let s = utf16_as_usize("aaa");
     let a = s[0];
     let index = InMemoryIndex::new(s.clone(), None, false);
-    let seqs = index
-        .sample_unsmoothed(Vec::new(), 3, 10, 20)
-        .unwrap();
+    let seqs = index.sample_unsmoothed(Vec::new(), 3, 10, 20).unwrap();
 
     assert_eq!(*seqs[0].last().unwrap(), a);
     assert_eq!(*seqs[19].last().unwrap(), a);
@@ -183,9 +179,7 @@ fn sample_smoothed_exists() {
     let s = utf16_as_usize("aabbccabccba");
     let mut index = InMemoryIndex::new(s.clone(), None, false);
 
-    let tokens = &index
-        .sample_smoothed(s[0..1].to_vec(), 3, 10, 1)
-        .unwrap()[0];
+    let tokens = &index.sample_smoothed(s[0..1].to_vec(), 3, 10, 1).unwrap()[0];
 
     assert_eq!(tokens.len(), 11);
 }
@@ -195,9 +189,7 @@ fn sample_smoothed_unigrams_exists() {
     let s = utf16_as_usize("aabbccabccba");
     let mut index = InMemoryIndex::new(s.clone(), None, false);
 
-    let tokens = &index
-        .sample_smoothed(s[0..1].to_vec(), 1, 10, 10)
-        .unwrap()[0];
+    let tokens = &index.sample_smoothed(s[0..1].to_vec(), 1, 10, 10).unwrap()[0];
 
     assert_eq!(tokens.len(), 11);
 }
@@ -216,9 +208,7 @@ fn prop_sample() {
         };
         let index = InMemoryIndex::new(s.clone(), None, false);
 
-        let got = &index
-            .sample_unsmoothed(query.to_vec(), 2, 1, 1)
-            .unwrap()[0];
+        let got = &index.sample_unsmoothed(query.to_vec(), 2, 1, 1).unwrap()[0];
         s.contains(got.first().unwrap())
     }
 

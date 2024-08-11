@@ -1,12 +1,12 @@
 use anyhow::Result;
+use funty::Unsigned;
 use pyo3::prelude::*;
 use std::collections::HashMap;
-use funty::Unsigned;
 
-use crate::sample::{KneserNeyCache, Sample};
-use crate::memmap_index::MemmapIndexRs;
 use crate::bindings::memmap_index::MemmapIndexTrait;
 use crate::bindings::sharded_memmap_index::ShardedMemmapIndexTrait;
+use crate::memmap_index::MemmapIndexRs;
+use crate::sample::{KneserNeyCache, Sample};
 
 /// Expose suffix table functionality over text corpora too large to fit in memory.
 pub struct ShardedMemmapIndexRs<T: Unsigned> {
@@ -51,7 +51,9 @@ impl<T: Unsigned> ShardedMemmapIndexRs<T> {
     pub fn new(paths: Vec<(String, String)>, vocab: usize) -> PyResult<Self> {
         let shards: Vec<MemmapIndexRs<T>> = paths
             .into_iter()
-            .map(|(text_path, table_path)| MemmapIndexRs::new(text_path, table_path, vocab).unwrap())
+            .map(|(text_path, table_path)| {
+                MemmapIndexRs::new(text_path, table_path, vocab).unwrap()
+            })
             .collect();
 
         Ok(ShardedMemmapIndexRs {
@@ -75,7 +77,7 @@ impl<T: Unsigned> ShardedMemmapIndexRs<T> {
     }
 }
 
-impl <T: Unsigned> ShardedMemmapIndexTrait for ShardedMemmapIndexRs<T> {
+impl<T: Unsigned> ShardedMemmapIndexTrait for ShardedMemmapIndexRs<T> {
     fn is_sorted(&self) -> bool {
         self.shards.iter().all(|shard| shard.is_sorted())
     }
@@ -94,7 +96,8 @@ impl <T: Unsigned> ShardedMemmapIndexTrait for ShardedMemmapIndexRs<T> {
     }
 
     fn count_next(&self, query: Vec<usize>) -> Vec<usize> {
-        let query: Vec<T> = query.iter()
+        let query: Vec<T> = query
+            .iter()
             .filter_map(|&item| T::try_from(item).ok())
             .collect();
 
@@ -132,27 +135,34 @@ impl <T: Unsigned> ShardedMemmapIndexTrait for ShardedMemmapIndexRs<T> {
         k: usize,
         num_samples: usize,
     ) -> Result<Vec<Vec<usize>>> {
-        let query: Vec<T> = query.iter()
+        let query: Vec<T> = query
+            .iter()
             .filter_map(|&item| T::try_from(item).ok())
             .collect();
 
-        let samples_batch = <Self as Sample<T>>::sample_unsmoothed(self, &query, n, k, num_samples)?;
-        Ok(samples_batch.into_iter().map(|samples| {
-            samples.into_iter()
-                .filter_map(|sample| {
-                    match TryInto::<usize>::try_into(sample) {
-                        Ok(value) => Some(value),
-                        Err(_) => None, // Silently skip values that can't be converted
-                    }
-                })
-                .collect::<Vec<usize>>()
-        }).collect())
+        let samples_batch =
+            <Self as Sample<T>>::sample_unsmoothed(self, &query, n, k, num_samples)?;
+        Ok(samples_batch
+            .into_iter()
+            .map(|samples| {
+                samples
+                    .into_iter()
+                    .filter_map(|sample| {
+                        match TryInto::<usize>::try_into(sample) {
+                            Ok(value) => Some(value),
+                            Err(_) => None, // Silently skip values that can't be converted
+                        }
+                    })
+                    .collect::<Vec<usize>>()
+            })
+            .collect())
     }
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
     fn get_smoothed_probs(&mut self, query: Vec<usize>) -> Vec<f64> {
-        let query: Vec<T> = query.iter()
+        let query: Vec<T> = query
+            .iter()
             .filter_map(|&item| T::try_from(item).ok())
             .collect();
         <Self as Sample<T>>::get_smoothed_probs(self, &query)
@@ -160,13 +170,12 @@ impl <T: Unsigned> ShardedMemmapIndexTrait for ShardedMemmapIndexRs<T> {
 
     /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
     /// tokens in the query.
-    fn batch_get_smoothed_probs(
-        &mut self,
-        queries: Vec<Vec<usize>>
-    ) -> Vec<Vec<f64>> {
-        let queries: Vec<Vec<T>> = queries.into_iter()
+    fn batch_get_smoothed_probs(&mut self, queries: Vec<Vec<usize>>) -> Vec<Vec<f64>> {
+        let queries: Vec<Vec<T>> = queries
+            .into_iter()
             .map(|query| {
-                query.iter()
+                query
+                    .iter()
                     .filter_map(|&item| T::try_from(item).ok())
                     .collect()
             })
@@ -180,23 +189,28 @@ impl <T: Unsigned> ShardedMemmapIndexTrait for ShardedMemmapIndexRs<T> {
         query: Vec<usize>,
         n: usize,
         k: usize,
-        num_samples: usize
+        num_samples: usize,
     ) -> Result<Vec<Vec<usize>>> {
-        let query: Vec<T> = query.iter()
+        let query: Vec<T> = query
+            .iter()
             .filter_map(|&item| T::try_from(item).ok())
             .collect();
 
         let samples_batch = <Self as Sample<T>>::sample_smoothed(self, &query, n, k, num_samples)?;
-        Ok(samples_batch.into_iter().map(|samples| {
-            samples.into_iter()
-                .filter_map(|sample| {
-                    match TryInto::<usize>::try_into(sample) {
-                        Ok(value) => Some(value),
-                        Err(_) => None, // Silently skip values that can't be converted
-                    }
-                })
-                .collect::<Vec<usize>>()
-        }).collect())
+        Ok(samples_batch
+            .into_iter()
+            .map(|samples| {
+                samples
+                    .into_iter()
+                    .filter_map(|sample| {
+                        match TryInto::<usize>::try_into(sample) {
+                            Ok(value) => Some(value),
+                            Err(_) => None, // Silently skip values that can't be converted
+                        }
+                    })
+                    .collect::<Vec<usize>>()
+            })
+            .collect())
     }
 
     /// Warning: O(k**n) where k is vocabulary size, use with caution.
