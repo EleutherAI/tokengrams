@@ -39,22 +39,6 @@ pub trait InMemoryIndexTrait {
     fn estimate_deltas(&mut self, n: usize);
 }
 
-impl InMemoryIndex {
-    pub fn new(tokens: Vec<usize>, vocab: Option<usize>, verbose: bool) -> Self {
-        let vocab = vocab.unwrap_or(u16::MAX as usize + 1);
-
-        let index: Box<dyn InMemoryIndexTrait + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
-            let tokens: Vec<u16> = tokens.iter().map(|&x| x as u16).collect();
-            Box::new(InMemoryIndexRs::<u16>::new(tokens, Some(vocab), verbose))
-        } else {
-            let tokens: Vec<u32> = tokens.iter().map(|&x| x as u32).collect();
-            Box::new(InMemoryIndexRs::<u32>::new(tokens, Some(vocab), verbose))
-        };
-
-        InMemoryIndex { index }
-    }
-}
-
 #[pymethods]
 impl InMemoryIndex {
     #[new]

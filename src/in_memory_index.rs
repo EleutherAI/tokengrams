@@ -283,3 +283,113 @@ impl<T: Unsigned> InMemoryIndexTrait for InMemoryIndexRs<T> {
         <Self as Sample<T>>::estimate_deltas(self, n)
     }
 }
+
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use utf16_literal::utf16;
+    use crate::table::SuffixTable;
+
+    fn sais(text: &str) -> SuffixTable {
+        SuffixTable::new(text.encode_utf16().collect::<Vec<_>>(), None, false)
+    }
+
+    fn utf16_as_usize(s: &str) -> Vec<usize> {
+        s.encode_utf16().map(|x| x as usize).collect()
+    }
+
+    #[test]
+    fn sample_unsmoothed_empty_query_exists() {
+        let s = utf16!("aaa");
+        let index: Box<dyn Sample<u16>> = Box::new(InMemoryIndexRs::new(s.to_vec(), None, false));
+
+        let seqs = index.sample_unsmoothed(&[], 3, 10, 1).unwrap();
+
+        assert_eq!(*seqs[0].last().unwrap(), s[0]);
+    }
+
+    #[test]
+    fn sample_unsmoothed_u16_exists() {
+        let s = utf16!("aaaa");
+        let a = &s[0..1];
+        let index: Box<dyn Sample<u16>> = Box::new(InMemoryIndexRs::new(s.to_vec(), None, false));
+
+        let seqs = index.sample_unsmoothed(a, 3, 10, 1).unwrap();
+
+        assert_eq!(*seqs[0].last().unwrap(), a[0]);
+    }
+
+    #[test]
+    fn sample_unsmoothed_u32_exists() {
+        let s: Vec<u32> = "aaaa".encode_utf16().map(|c| c as u32).collect();
+        let u32_vocab = Some(u16::MAX as usize + 2);
+        let index: Box<dyn Sample<u32>> = Box::new(InMemoryIndexRs::<u32>::new(s.clone(), u32_vocab, false));
+
+        let seqs = index.sample_unsmoothed(&s[0..1], 3, 10, 1).unwrap();
+
+        assert_eq!(*seqs[0].last().unwrap(), s[0]);
+    }
+
+    #[test]
+    fn sample_unsmoothed_usize_exists() {
+        let s = utf16_as_usize("aaaa");
+        let index: Box<dyn InMemoryIndexTrait> = Box::new(InMemoryIndexRs::new(s.to_vec(), None, false));
+
+        let seqs = index.sample_unsmoothed(s[0..1].to_vec(), 3, 10, 1).unwrap();
+
+        assert_eq!(*seqs[0].last().unwrap(), s[0]);
+    }
+
+    #[test]
+    fn sample_smoothed_exists() {
+        let s = utf16!("aabbccabccba");
+        let mut index: Box<dyn Sample<u16>> = Box::new(InMemoryIndexRs::new(s.to_vec(), None, false));
+
+        let tokens = &index.sample_smoothed(&s[0..1], 3, 10, 1).unwrap()[0];
+
+        assert_eq!(tokens.len(), 11);
+    }
+
+    #[test]
+    fn sample_smoothed_empty_query_exists() {
+        let s: Vec<u16> = "aabbccabccba".encode_utf16().collect();
+        let mut index: Box<dyn Sample<u16>> = Box::new(InMemoryIndexRs::new(s, None, false));
+
+        let tokens = &index.sample_smoothed(&[], 1, 10, 10).unwrap()[0];
+
+        assert_eq!(tokens.len(), 10);
+    }
+
+    #[test]
+    fn smoothed_probs_exists() {
+        let tokens = "aaaaaaaabc".to_string();
+        let tokens_vec: Vec<u16> = tokens.encode_utf16().collect();
+        let query: Vec<_> = vec![utf16!("b")[0]];
+
+        // Get unsmoothed probs for query
+        let sa: SuffixTable = sais(&tokens);
+        let bigram_counts = sa.count_next(&query);
+        let unsmoothed_probs = bigram_counts
+            .iter()
+            .map(|&x| x as f64 / bigram_counts.iter().sum::<usize>() as f64)
+            .collect::<Vec<f64>>();
+
+        // Get smoothed probs for query
+        let mut index: Box<dyn Sample<u16>> = Box::new(InMemoryIndexRs::new(tokens_vec, None, false));
+        let smoothed_probs = index.get_smoothed_probs(&query);
+
+        // Compare unsmoothed and smoothed probabilities
+        let a = utf16!("a")[0] as usize;
+        let c = utf16!("c")[0] as usize;
+
+        // The naive bigram probability for query 'b' is p(c) = 1.0.
+        assert!(unsmoothed_probs[a] == 0.0);
+        assert!(unsmoothed_probs[c] == 1.0);
+
+        // The smoothed bigram probabilities interpolate with the lower-order unigram
+        // probabilities where p(a) is high, lowering p(c)
+        assert!(smoothed_probs[a] > 0.1);
+        assert!(smoothed_probs[c] < 1.0);
+    }
+}

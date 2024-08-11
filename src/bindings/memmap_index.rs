@@ -40,7 +40,7 @@ pub trait MemmapIndexTrait {
 impl MemmapIndex {
     #[new]
     #[pyo3(signature = (text_path, table_path, vocab=u16::MAX as usize + 1))]
-    pub fn new_py(
+    pub fn new(
         _py: Python,
         text_path: String,
         table_path: String,
@@ -144,19 +144,5 @@ impl MemmapIndex {
     /// https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16."""
     pub fn estimate_deltas(&mut self, n: usize) {
         self.index.estimate_deltas(n);
-    }
-}
-
-impl MemmapIndex {
-    pub fn new(text_path: String, table_path: String, vocab: usize) -> Result<Self> {
-        if vocab <= u16::MAX as usize + 1 {
-            Ok(MemmapIndex {
-                index: Box::new(MemmapIndexRs::<u16>::new(text_path, table_path, vocab)?),
-            })
-        } else {
-            Ok(MemmapIndex {
-                index: Box::new(MemmapIndexRs::<u32>::new(text_path, table_path, vocab)?),
-            })
-        }
     }
 }

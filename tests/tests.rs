@@ -2,7 +2,7 @@ extern crate quickcheck;
 extern crate utf16_literal;
 
 use quickcheck::{QuickCheck, Testable};
-use tokengrams::{InMemoryIndex, SuffixTable};
+use tokengrams::SuffixTable;
 use utf16_literal::utf16;
 
 fn sais(text: &str) -> SuffixTable {
@@ -11,10 +11,6 @@ fn sais(text: &str) -> SuffixTable {
 
 fn qc<T: Testable>(f: T) {
     QuickCheck::new().tests(1000).max_tests(10000).quickcheck(f);
-}
-
-fn utf16_as_usize(s: &str) -> Vec<usize> {
-    s.encode_utf16().map(|x| x as usize).collect()
 }
 
 // Do some testing on substring search.
@@ -149,112 +145,4 @@ fn prop_positions() {
         true
     }
     qc(prop as fn(String, u16) -> bool);
-}
-
-#[test]
-fn sample_unsmoothed_exists() {
-    let s = utf16_as_usize("aaaa");
-    let a = &s[0..1];
-
-    let index = InMemoryIndex::new(s.clone(), None, false);
-    let seqs = index.sample_unsmoothed(a.to_vec(), 3, 10, 20).unwrap();
-
-    assert_eq!(*seqs[0].last().unwrap(), a[0]);
-    assert_eq!(*seqs[19].last().unwrap(), a[0]);
-}
-
-#[test]
-fn sample_unsmoothed_empty_query_exists() {
-    let s = utf16_as_usize("aaa");
-    let a = s[0];
-    let index = InMemoryIndex::new(s.clone(), None, false);
-    let seqs = index.sample_unsmoothed(Vec::new(), 3, 10, 20).unwrap();
-
-    assert_eq!(*seqs[0].last().unwrap(), a);
-    assert_eq!(*seqs[19].last().unwrap(), a);
-}
-
-#[test]
-fn sample_smoothed_exists() {
-    let s = utf16_as_usize("aabbccabccba");
-    let mut index = InMemoryIndex::new(s.clone(), None, false);
-
-    let tokens = &index.sample_smoothed(s[0..1].to_vec(), 3, 10, 1).unwrap()[0];
-
-    assert_eq!(tokens.len(), 11);
-}
-
-#[test]
-fn sample_smoothed_unigrams_exists() {
-    let s = utf16_as_usize("aabbccabccba");
-    let mut index = InMemoryIndex::new(s.clone(), None, false);
-
-    let tokens = &index.sample_smoothed(s[0..1].to_vec(), 1, 10, 10).unwrap()[0];
-
-    assert_eq!(tokens.len(), 11);
-}
-
-#[test]
-fn prop_sample() {
-    fn prop(s: String) -> bool {
-        let s = utf16_as_usize(&s);
-        if s.len() < 2 {
-            return true;
-        }
-
-        let query = match s.get(0..1) {
-            Some(slice) => slice,
-            None => &[],
-        };
-        let index = InMemoryIndex::new(s.clone(), None, false);
-
-        let got = &index.sample_unsmoothed(query.to_vec(), 2, 1, 1).unwrap()[0];
-        s.contains(got.first().unwrap())
-    }
-
-    qc(prop as fn(String) -> bool);
-}
-
-#[test]
-fn smoothed_probs_exists() {
-    let tokens = "aaaaaaaabc".to_string();
-
-    let sa: SuffixTable = sais(&tokens);
-    let query = vec![utf16!("b")[0]];
-    let vocab = utf16!("c")[0] + 1;
-    let a = utf16!("a")[0] as usize;
-    let c = utf16!("c")[0] as usize;
-
-    let bigram_counts = sa.count_next(&query);
-    let unsmoothed_probs = bigram_counts
-        .iter()
-        .map(|&x| x as f64 / bigram_counts.iter().sum::<usize>() as f64)
-        .collect::<Vec<f64>>();
-
-    let s = utf16_as_usize(&tokens);
-    let query = utf16_as_usize("b");
-    let mut index = InMemoryIndex::new(s.clone(), Some(vocab as usize), false);
-    let smoothed_probs = index.get_smoothed_probs(query);
-
-    // The naive bigram probability for query 'b' is p(c) = 1.0.
-    assert!(unsmoothed_probs[a] == 0.0);
-    assert!(unsmoothed_probs[c] == 1.0);
-
-    // The smoothed bigram probabilities interpolate with the lower-order unigram
-    // probabilities where p(a) is high, lowering p(c)
-    assert!(smoothed_probs[a] > 0.1);
-    assert!(smoothed_probs[c] < 1.0);
-}
-
-#[test]
-fn smoothed_probs_empty_query_exists() {
-    let s = utf16_as_usize("aaa");
-    let vocab = s[0] + 1;
-
-    let mut index = InMemoryIndex::new(s, Some(vocab), false);
-
-    let probs = index.get_smoothed_probs(Vec::new());
-    let residual = (probs.iter().sum::<f64>() - 1.0).abs();
-
-    assert!(residual < 1e-4);
 }
