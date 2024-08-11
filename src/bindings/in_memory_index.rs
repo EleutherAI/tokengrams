@@ -85,28 +85,28 @@ impl InMemoryIndex {
     }
 
     #[staticmethod]
-    #[pyo3(signature = (text_path, table_path, vocab=u16::MAX as usize + 1))]
-    pub fn from_disk(text_path: String, table_path: String, vocab: usize) -> Result<Self> {
+    #[pyo3(signature = (token_path, index_path, vocab=u16::MAX as usize + 1))]
+    pub fn from_disk(token_path: String, index_path: String, vocab: usize) -> Result<Self> {
         if vocab <= u16::MAX as usize + 1 {
             Ok(InMemoryIndex {
                 index: Box::new(InMemoryIndexRs::<u16>::from_disk(
-                    text_path, table_path, vocab,
+                    token_path, index_path, vocab,
                 )?),
             })
         } else {
             Ok(InMemoryIndex {
                 index: Box::new(InMemoryIndexRs::<u32>::from_disk(
-                    text_path, table_path, vocab,
+                    token_path, index_path, vocab,
                 )?),
             })
         }
     }
 
-    pub fn save_text(&self, path: String) -> Result<()> {
+    pub fn save_tokens(&self, path: String) -> Result<()> {
         self.index.save_text(path)
     }
 
-    pub fn save_table(&self, path: String) -> Result<()> {
+    pub fn save_index(&self, path: String) -> Result<()> {
         self.index.save_table(path)
     }
 

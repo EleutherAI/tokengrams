@@ -32,8 +32,8 @@ def test_gram_index(tokens: list[int]):
 
     # Save to disk and check that we can load it back
     with NamedTemporaryFile() as f:
-        index.save_text(f.name)
-        
+        index.save_tokens(f.name)
+
         index = InMemoryIndex.from_token_file(f.name)
         
         check_gram_index(index, tokens)

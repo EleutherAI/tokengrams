@@ -8,6 +8,15 @@ class InMemoryIndex:
     def from_token_file(path: str, token_limit: int | None = None, vocab: int = 2**16, verbose: bool = False) -> "InMemoryIndex":
         """Construct a `InMemoryIndex` from a file containing raw little-endian tokens."""
 
+    def from_disk(self, token_path: str, index_path: str, vocab: int = 2**16) -> "InMemoryIndex":
+        """Load a pretrained index from disk."""
+
+    def save_tokens(self, path: str):
+        """Save the tokens to a file."""
+
+    def save_index(self, path: str):
+        """Save the index to disk."""
+
     def is_sorted(self) -> bool:
         """Check if the index's suffix table is sorted lexicographically. 
         This is always true for valid indices."""
@@ -19,7 +28,7 @@ class InMemoryIndex:
         """Count the number of occurrences of `query` in the index."""
 
     def positions(self, query: list[int]) -> list[int]:
-        """Returns an unordered list of positions where `query` starts in `text`."""
+        """Returns an unordered list of positions where `query` starts in `tokens`."""
 
     def count_next(self, query: list[int]) -> list[int]:
         """Count the occurrences of each token directly following `query`."""
@@ -49,20 +58,14 @@ class InMemoryIndex:
         for models of order n and below with improved estimates over the entire index.
         https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16."""
 
-    def save_text(self, path: str):
-        """Save the tokens to disk."""
-
-    def save_table(self, path: str):
-        """Save the sorted table to disk."""
-
 class MemmapIndex:
     """An n-gram index backed by a memory-mapped file."""
 
-    def __init__(self, token_file: str, index_file: str, vocab: int = 2**16) -> None:
+    def __init__(self, token_path: str, index_path: str, vocab: int = 2**16) -> None:
         """Load a prebuilt memory-mapped index from a pair of files."""
 
     @staticmethod
-    def build(token_file: str, index_file: str, vocab: int = 2**16, verbose: bool = False) -> "MemmapIndex":
+    def build(token_path: str, index_path: str, vocab: int = 2**16, verbose: bool = False) -> "MemmapIndex":
         """Build a memory-mapped index from a token file."""
 
     def is_sorted(self) -> bool:
@@ -76,7 +79,7 @@ class MemmapIndex:
         """Count the number of occurrences of `query` in the index."""
 
     def positions(self, query: list[int]) -> list[int]:
-        """Returns an unordered list of positions where `query` starts in `text`."""
+        """Returns an unordered list of positions where `query` starts in `tokens`."""
 
     def count_next(self, query: list[int]) -> list[int]:
         """Count the occurrences of each token directly following `query`."""
@@ -109,11 +112,11 @@ class MemmapIndex:
 class ShardedMemmapIndex:
     """An n-gram index backed by several memory-mapped files."""
 
-    def __init__(self, files: list[tuple[str, str]], vocab: int = 2**16) -> None:
+    def __init__(self, paths: list[tuple[str, str]], vocab: int = 2**16) -> None:
         """Load a prebuilt memory-mapped index from a list of pairs of files in form (token_file, index_file)."""
 
     @staticmethod
-    def build(files: list[tuple[str, str]], vocab: int = 2**16, verbose: bool = False) -> "ShardedMemmapIndex":
+    def build(paths: list[tuple[str, str]], vocab: int = 2**16, verbose: bool = False) -> "ShardedMemmapIndex":
         """Build a memory-mapped index from a token file."""
 
     def is_sorted(self) -> bool:
