@@ -13,7 +13,7 @@ pip install tokengrams
 
 # Usage
 
-Indices are built from on-disk corpora of u16 or u32 tokens. Corpora with vocabulary sizes smaller than 2**16 must use u16 tokens. If the vocabulary size is greater than the length of the largest word size vector that can be allocated on the machine, tokengrams will panic.
+Indices are built from on-disk corpora of u16 or u32 tokens. Corpora with vocabulary sizes smaller than 2^16 must use u16 tokens. Querying the index will cause an error if the vocabulary size is greater than the length of the largest word size vector that can be allocated on the machine.
 
 ## Building an index
 ```python
@@ -82,7 +82,9 @@ tokens = [0, 1, 2, 3, 4]
 index = InMemoryIndex(tokens, vocab=5)
 ```
 
-Many systems struggle with memory mapping large tables (e.g. 40 billion tokens), causing unexpected bus errors. To prevent this split the corpus into shards and use a ShardedMemmapIndex to sort and query the table shard by shard:
+Use a MemmapIndex for larger corpora. 
+
+Many systems struggle with memory mapping extremely large tables (e.g. 40 billion tokens), causing unexpected bus errors. To prevent this split the corpus into shards and use a ShardedMemmapIndex to sort and query the table shard by shard:
 
 ```python
 from tokengrams import ShardedMemmapIndex
@@ -100,10 +102,16 @@ index = ShardedMemmapIndex.build(files, vocab=2**17, verbose=True)
 
 ## Performance
 
-Table creation times scale inversely with the number of available CPU threads. 
+Index build times for in-memory corpora scale inversely with the number of available CPU threads, whereas if the index reads from or writes to a file it is likely to be IO bound.
 
-The time complexities of count_next(query) and sample_unsmoothed(query) are O(n log n), where n is the number of completions for the query.
-The time complexity of sample_smoothed(query) is O(m n log n) where m is the n-gram order.
+The time complexities of count_next(query) and sample_unsmoothed(query) are O(n log n), where n is ~ the number of completions for the query. The time complexity of sample_smoothed(query) is O(m n log n) where m is the n-gram order.
+
+<table>
+  <tr>
+    <td><img src="./tokengrams/benchmark/MemmapIndex_build_times.png" alt="Sample build times for an IO bound index"></td>
+    <td><img src="./tokengrams/benchmark/MemmapIndex_count_next_times.png" alt="Sample count_next times for an IO bound index"></td>
+  </tr>
+</table>
 
 # Development
 
