@@ -1,38 +1,54 @@
 use anyhow::Result;
-use pyo3::prelude::*;
+use funty::Unsigned;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::time::Instant;
 
+use crate::bindings::memmap_index::MemmapIndexTrait;
 use crate::mmap_slice::{MmapSlice, MmapSliceMut};
 use crate::par_quicksort::par_sort_unstable_by_key;
 use crate::sample::{KneserNeyCache, Sample};
 use crate::table::SuffixTable;
-use crate::table::Table;
-use funty::Unsigned;
 
 /// A memmap index exposes suffix table functionality over text corpora too large to fit in memory.
-#[pyclass]
-pub struct MemmapIndex {
-    table: Box<dyn Table + Send + Sync>,
-    cache: KneserNeyCache
+pub struct MemmapIndexRs<T: Unsigned> {
+    table: SuffixTable<MmapSlice<T>, MmapSlice<u64>>,
+    cache: KneserNeyCache,
 }
 
-impl MemmapIndex {
-    fn build_typed<T: Unsigned>(
-        text_path: String, 
+impl<T: Unsigned> MemmapIndexRs<T> {
+    pub fn new(text_path: String, table_path: String, vocab: usize) -> Result<Self> {
+        let text_file = File::open(&text_path)?;
+        let table_file = File::open(&table_path)?;
+
+        let table = SuffixTable::from_parts(
+            MmapSlice::<T>::new(&text_file)?,
+            MmapSlice::new(&table_file)?,
+            Some(vocab),
+        );
+        assert!(table.is_sorted());
+
+        Ok(MemmapIndexRs {
+            table,
+            cache: KneserNeyCache::default(),
+        })
+    }
+
+    pub fn build(
+        text_path: String,
         table_path: String,
-        vocab: Option<usize>, 
-        verbose: bool
-    ) -> PyResult<Self> {
+        vocab: usize,
+        verbose: bool,
+    ) -> Result<Self> {
         // Memory map the text as read-only
         let text_mmap = MmapSlice::<T>::new(&File::open(&text_path).unwrap()).unwrap();
 
         let table_file = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .open(&table_path)?;
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&table_path)?;
 
         // Allocate space on disk for the table
         let table_size = text_mmap.len() * 8;
@@ -82,128 +98,17 @@ impl MemmapIndex {
 
         // Re-open the table as read-only
         let table_mmap = MmapSlice::new(&table_file)?;
-        let table = SuffixTable::from_parts(text_mmap, table_mmap, vocab);
+        let table = SuffixTable::from_parts(text_mmap, table_mmap, Some(vocab));
         debug_assert!(table.is_sorted());
 
-        Ok(MemmapIndex {
-            table: Box::new(table),
+        Ok(MemmapIndexRs {
+            table,
             cache: KneserNeyCache::default(),
         })
-
     }
 }
 
-#[pymethods]
-impl MemmapIndex {
-    #[new]
-    #[pyo3(signature = (text_path, table_path, vocab=u16::MAX as usize + 1))]
-    pub fn new(_py: Python, text_path: String, table_path: String, vocab: usize) -> PyResult<Self> {
-        let text_file = File::open(&text_path)?;
-        let table_file = File::open(&table_path)?;
-
-        let table: Box<dyn Table + Send + Sync> = if vocab <= u16::MAX as usize + 1 {
-            Box::new(SuffixTable::from_parts(
-                MmapSlice::<u16>::new(&text_file)?,
-                MmapSlice::new(&table_file)?,
-                Some(vocab)
-            ))
-        } else {
-            Box::new(SuffixTable::from_parts(
-                MmapSlice::<u32>::new(&text_file)?,
-                MmapSlice::new(&table_file)?,
-                Some(vocab)
-            ))
-        };
-        debug_assert!(table.is_sorted());
-
-        Ok(MemmapIndex {
-            table,
-            cache: KneserNeyCache::default()
-        })
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (text_path, table_path, vocab=u16::MAX as usize + 1, verbose=false))]
-    pub fn build(text_path: String, table_path: String, vocab: usize, verbose: bool) -> PyResult<Self> {
-        if vocab <= u16::MAX as usize + 1 {
-            MemmapIndex::build_typed::<u16>(text_path, table_path, Some(vocab), verbose)
-        } else {
-            MemmapIndex::build_typed::<u32>(text_path, table_path, Some(vocab), verbose)
-        }
-    }
-
-    pub fn positions(&self, query: Vec<usize>) -> Vec<u64> {
-        self.table.positions(&query).to_vec()
-    }
-
-    pub fn is_sorted(&self) -> bool {
-        self.table.is_sorted()
-    }
-
-    pub fn contains(&self, query: Vec<usize>) -> bool {
-        self.table.contains(&query)
-    }
-
-    pub fn count(&self, query: Vec<usize>) -> usize {
-        self.table.positions(&query).len()
-    }
-
-    pub fn count_next(&self, query: Vec<usize>) -> Vec<usize> {
-        self.table.count_next(&query)
-    }
-
-    pub fn batch_count_next(&self, queries: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
-        self.table.batch_count_next(&queries)
-    }
-
-    /// Autoregressively sample num_samples of k characters from an unsmoothed n-gram model."""
-    #[pyo3(signature = (query, n, k, num_samples))]
-    pub fn sample_unsmoothed(
-        &self,
-        query: Vec<usize>,
-        n: usize,
-        k: usize,
-        num_samples: usize
-    ) -> Result<Vec<Vec<usize>>> {
-        self.sample_unsmoothed_rs(&query, n, k, num_samples)
-    }
-
-    /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
-    /// tokens in the query.
-    pub fn get_smoothed_probs(&mut self, query: Vec<usize>) -> Vec<f64> {
-        self.get_smoothed_probs_rs(&query)
-    }
-
-    /// Returns interpolated Kneser-Ney smoothed token probability distribution using all previous
-    /// tokens in the query.
-    pub fn batch_get_smoothed_probs(
-        &mut self,
-        queries: Vec<Vec<usize>>
-    ) -> Vec<Vec<f64>> {
-        self.batch_get_smoothed_probs_rs(&queries)
-    }
-
-    /// Autoregressively sample num_samples of k characters from a Kneser-Ney smoothed n-gram model.
-    pub fn sample_smoothed(
-        &mut self,
-        query: Vec<usize>,
-        n: usize,
-        k: usize,
-        num_samples: usize
-    ) -> Result<Vec<Vec<usize>>> {
-        self.sample_smoothed_rs(&query, n, k, num_samples)
-    }
-
-    /// Warning: O(k**n) where k is vocabulary size, use with caution.
-    /// Improve smoothed model quality by replacing the default delta hyperparameters
-    /// for models of order n and below with improved estimates over the entire index.
-    /// https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16."""
-    pub fn estimate_deltas(&mut self, n: usize) {
-        self.estimate_deltas_rs(n);
-    }
-}
-
-impl Sample for MemmapIndex {
+impl<T: Unsigned> Sample<T> for MemmapIndexRs<T> {
     fn get_cache(&self) -> &KneserNeyCache {
         &self.cache
     }
@@ -212,11 +117,144 @@ impl Sample for MemmapIndex {
         &mut self.cache
     }
 
-    fn count_next_slice(&self, query: &[usize]) -> Vec<usize> {
+    fn count_next_slice(&self, query: &[T]) -> Vec<usize> {
         self.table.count_next(query)
     }
 
     fn count_ngrams(&self, n: usize) -> HashMap<usize, usize> {
         self.table.count_ngrams(n)
+    }
+}
+
+impl<T> MemmapIndexTrait for MemmapIndexRs<T>
+where
+    T: Unsigned,
+{
+    fn positions(&self, query: Vec<usize>) -> Vec<u64> {
+        let query: Vec<T> = query
+            .iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+        self.table.positions(&query).to_vec()
+    }
+
+    fn is_sorted(&self) -> bool {
+        self.table.is_sorted()
+    }
+
+    fn contains(&self, query: Vec<usize>) -> bool {
+        let query: Vec<T> = query
+            .iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+        self.table.contains(&query)
+    }
+
+    fn count(&self, query: Vec<usize>) -> usize {
+        let query: Vec<T> = query
+            .iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+        self.table.positions(&query).len()
+    }
+
+    fn count_next(&self, query: Vec<usize>) -> Vec<usize> {
+        let query: Vec<T> = query
+            .iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+        self.table.count_next(&query)
+    }
+
+    fn batch_count_next(&self, queries: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+        queries
+            .into_par_iter()
+            .map(|query| self.count_next(query))
+            .collect()
+    }
+
+    fn sample_smoothed(
+        &mut self,
+        query: Vec<usize>,
+        n: usize,
+        k: usize,
+        num_samples: usize,
+    ) -> Result<Vec<Vec<usize>>> {
+        let query: Vec<T> = query
+            .iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+
+        let samples_batch = <Self as Sample<T>>::sample_smoothed(self, &query, n, k, num_samples)?;
+        Ok(samples_batch
+            .into_iter()
+            .map(|samples| {
+                samples
+                    .into_iter()
+                    .filter_map(|sample| {
+                        match TryInto::<usize>::try_into(sample) {
+                            Ok(value) => Some(value),
+                            Err(_) => None, // Silently skip values that can't be converted
+                        }
+                    })
+                    .collect::<Vec<usize>>()
+            })
+            .collect())
+    }
+
+    fn sample_unsmoothed(
+        &self,
+        query: Vec<usize>,
+        n: usize,
+        k: usize,
+        num_samples: usize,
+    ) -> Result<Vec<Vec<usize>>> {
+        let query: Vec<T> = query
+            .iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+
+        let samples_batch =
+            <Self as Sample<T>>::sample_unsmoothed(self, &query, n, k, num_samples)?;
+        Ok(samples_batch
+            .into_iter()
+            .map(|samples| {
+                samples
+                    .into_iter()
+                    .filter_map(|sample| {
+                        match TryInto::<usize>::try_into(sample) {
+                            Ok(value) => Some(value),
+                            Err(_) => None, // Silently skip values that can't be converted
+                        }
+                    })
+                    .collect::<Vec<usize>>()
+            })
+            .collect())
+    }
+
+    fn get_smoothed_probs(&mut self, query: Vec<usize>) -> Vec<f64> {
+        let query: Vec<T> = query
+            .iter()
+            .filter_map(|&item| T::try_from(item).ok())
+            .collect();
+
+        <Self as Sample<T>>::get_smoothed_probs(self, &query)
+    }
+
+    fn batch_get_smoothed_probs(&mut self, queries: Vec<Vec<usize>>) -> Vec<Vec<f64>> {
+        let queries: Vec<Vec<T>> = queries
+            .into_iter()
+            .map(|query| {
+                query
+                    .iter()
+                    .filter_map(|&item| T::try_from(item).ok())
+                    .collect()
+            })
+            .collect();
+        <Self as Sample<T>>::batch_get_smoothed_probs(self, &queries)
+    }
+
+    fn estimate_deltas(&mut self, n: usize) {
+        <Self as Sample<T>>::estimate_deltas(self, n)
     }
 }
