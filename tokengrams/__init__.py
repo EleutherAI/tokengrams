@@ -3,3 +3,5 @@ from .tokengrams import (
     MemmapIndex,
     ShardedMemmapIndex,
 )
+
+from .utils import tokenize_hf_dataset
