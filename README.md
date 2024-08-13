@@ -118,25 +118,23 @@ Many systems struggle with memory mapping extremely large tables (e.g. 40 billio
 from tokengrams import ShardedMemmapIndex
 from huggingface_hub import HfApi, hf_hub_download
 
-repo_id = "EleutherAI/pile-standard-pythia-preshuffled"
-bin_files = []
-for file in HfApi().list_repo_files(repo_id, repo_type="dataset"):
-    if file.endswith('.bin'):
-        bin_files.append(file)
-        hf_hub_download(repo_id, repo_type="dataset", filename=file, local_dir=".")
-
-paths = [
-    (file, f'{file.rstrip('.bin')}.idx')
-    for file in bin_files
+files = [
+    file for file in HfApi().list_repo_files("EleutherAI/pile-standard-pythia-preshuffled", repo_type="dataset")
+    if file.endswith('.bin')
 ]
 
-index = ShardedMemmapIndex.build(paths, vocab=2**16, verbose=True)
+index_paths = []
+for file in files:
+    hf_hub_download("EleutherAI/pile-standard-pythia-preshuffled", repo_type="dataset", filename=file, local_dir=".")
+    index_paths.append((file, f'{file.rstrip(".bin")}.idx'))
+
+index = ShardedMemmapIndex.build(index_paths, vocab=2**16, verbose=True)
 ```
 ### Tokens
 
-Tokengrams builds indices from on-disk corpora of either u16 or u32 tokens, supporting a maximum vocabulary size of 2^32. In practice, however, vocabulary size is limited by the length of the largest word size vector the machine can allocate in memory. 
+Tokengrams builds indices from on-disk corpora of either u16 or u32 tokens, supporting a maximum vocabulary size of 2<sup>32</sup>. In practice, however, vocabulary size is limited by the length of the largest word size vector the machine can allocate in memory. 
 
-Corpora with vocabulary sizes smaller than 2^16 must use u16 tokens.
+Corpora with vocabulary sizes smaller than 2<sup>16</sup> must use u16 tokens.
 
 ## Performance
 

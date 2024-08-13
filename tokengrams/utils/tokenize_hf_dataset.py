@@ -11,13 +11,17 @@ from tqdm import tqdm
 def tokenize_hf_dataset(
     dataset: Dataset | DatasetDict | IterableDataset | IterableDatasetDict,
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
-    output_path: Path,
+    output_path: Union[Path, str],
     text_key="text",
     append_eod: bool = False,
     workers: int = 1,
 ):
+    output_path = Path(output_path)
+
     batch_size = 10_000
+    
     eos_token = tokenizer.eos_token_id if append_eod else None
+    
     vocab_size = get_vocab_size(tokenizer)
     if vocab_size > 2**32:
         raise ValueError(f"Tokenizer vocab size {vocab_size} is too large for uint32")
