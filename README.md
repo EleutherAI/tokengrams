@@ -34,9 +34,9 @@ from datasets import load_dataset
 from transformers import AutoTokenizer
 
 tokenize_hf_dataset(
-    dataset=load_dataset("wikitext", "wikitext-103-raw-v1"),
+    dataset=load_dataset("EleutherAI/lambada_openai", "en"),
     tokenizer=AutoTokenizer.from_pretrained("EleutherAI/pythia-160m"),
-    output_path="wikitext.bin",
+    output_path="lambada.bin",
     text_key="text",
     append_eod=True,
     workers=1,
