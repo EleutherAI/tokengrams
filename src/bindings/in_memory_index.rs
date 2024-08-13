@@ -171,7 +171,7 @@ impl InMemoryIndex {
     /// Warning: O(k**n) where k is vocabulary size, use with caution.
     /// Improve smoothed model quality by replacing the default delta hyperparameters
     /// for models of order n and below with improved estimates over the entire index.
-    /// https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16."""
+    /// <https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf/>, page 16.
     pub fn estimate_deltas(&mut self, n: usize) {
         self.index.estimate_deltas(n);
     }

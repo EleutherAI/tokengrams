@@ -216,7 +216,7 @@ impl<T: Unsigned> ShardedMemmapIndexTrait for ShardedMemmapIndexRs<T> {
     /// Warning: O(k**n) where k is vocabulary size, use with caution.
     /// Improve smoothed model quality by replacing the default delta hyperparameters
     /// for models of order n and below with improved estimates over the entire index.
-    /// https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf, page 16."""
+    /// <https://people.eecs.berkeley.edu/~klein/cs294-5/chen_goodman.pdf/>, page 16.
     fn estimate_deltas(&mut self, n: usize) {
         <Self as Sample<T>>::estimate_deltas(self, n);
     }
