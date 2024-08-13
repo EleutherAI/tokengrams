@@ -1,4 +1,4 @@
-name: Manual Build
+name: Publish
 
 on:
   workflow_dispatch:
