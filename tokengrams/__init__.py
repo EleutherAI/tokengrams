@@ -4,4 +4,4 @@ from .tokengrams import (
     ShardedMemmapIndex,
 )
 
-from .utils import tokenize_hf_dataset
+from .utils.tokenize_hf_dataset import tokenize_hf_dataset

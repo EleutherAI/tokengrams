@@ -12,23 +12,40 @@ pip install tokengrams
 ```
 
 # Usage
+## Preparing data
 
-Tokengrams builds indices from on-disk corpora of either u16 or u32 tokens, supporting a maximum vocabulary size of 2^32. In practice, however, vocabulary size is limited by the length of the largest word size vector the machine can allocate in memory. 
+Use a dataset of u16 or u32 tokens, or prepare one from a HuggingFace dataset.
 
-Corpora with vocabulary sizes smaller than 2^16 must use u16 tokens.
-
-## Building an index
 ```python
-from tokengrams import MemmapIndex
+# Get pre-tokenized dataset
 from huggingface_hub import HfApi, hf_hub_download
 
-# Get a dataset formatted as u16 tokens
 hf_hub_download(
   repo_id="EleutherAI/pile-standard-pythia-preshuffled", 
   repo_type="dataset", 
   filename="document-00000-of-00020.bin", 
   local_dir="."
 )
+```
+```python
+# Tokenize HF dataset
+from tokengrams import tokenize_hf_dataset
+from datasets import load_dataset
+from transformers import AutoTokenizer
+
+tokenize_hf_dataset(
+    dataset=load_dataset("wikitext", "wikitext-103-raw-v1"),
+    tokenizer=AutoTokenizer.from_pretrained("EleutherAI/pythia-160m"),
+    output_path="wikitext.bin",
+    text_key="text",
+    append_eod=True,
+    workers=1,
+)
+```
+
+## Building an index
+```python
+from tokengrams import MemmapIndex
 
 # Create a new index from an on-disk corpus of u16 tokens and save it to a .idx file. 
 # Set verbose to true to include a progress bar for the index sort.
@@ -52,7 +69,7 @@ print(index.count(tokenizer.encode("hello world")))
 index = MemmapIndex(
     "document-00000-of-00020.bin",
     "document-00000-of-00020.idx",
-    vocab=2**17
+    vocab=2**16
 )
 ```
 
@@ -99,28 +116,27 @@ Many systems struggle with memory mapping extremely large tables (e.g. 40 billio
 
 ```python
 from tokengrams import ShardedMemmapIndex
-from pathlib import Path
 from huggingface_hub import HfApi, hf_hub_download
 
-# Get sharded corpus of u16 tokens
 repo_id = "EleutherAI/pile-standard-pythia-preshuffled"
-repo_type = "dataset"
+bin_files = []
+for file in HfApi().list_repo_files(repo_id, repo_type="dataset"):
+    if file.endswith('.bin'):
+        bin_files.append(file)
+        hf_hub_download(repo_id, repo_type="dataset", filename=file, local_dir=".")
 
-bin_files = [
-  file for file in HfApi().list_repo_files(repo_id, repo_type=repo_type) 
-  if file.endswith('.bin')
-]
-
-for file in bin_files:
-    hf_hub_download(repo_id=repo_id, repo_type=repo_type, filename=file, local_dir=".")
-
-# Build sharded index
-files = [
-    (file, f'{file.rstrip('.bin')}.idx'),
+paths = [
+    (file, f'{file.rstrip('.bin')}.idx')
     for file in bin_files
 ]
-index = ShardedMemmapIndex.build(files, vocab=2**17, verbose=True)
+
+index = ShardedMemmapIndex.build(paths, vocab=2**16, verbose=True)
 ```
+### Tokens
+
+Tokengrams builds indices from on-disk corpora of either u16 or u32 tokens, supporting a maximum vocabulary size of 2^32. In practice, however, vocabulary size is limited by the length of the largest word size vector the machine can allocate in memory. 
+
+Corpora with vocabulary sizes smaller than 2^16 must use u16 tokens.
 
 ## Performance
 
