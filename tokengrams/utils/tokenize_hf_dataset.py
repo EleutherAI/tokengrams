@@ -1,13 +1,40 @@
-import os
-from argparse import ArgumentParser
 import multiprocessing as mp
 from typing import Union, Generator
+from pathlib import Path
 
 import numpy as np
-from datasets import load_dataset, Dataset, DatasetDict, IterableDataset, IterableDatasetDict, concatenate_datasets
-from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
+from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict, concatenate_datasets
+from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 from tqdm import tqdm
 
+
+def tokenize_hf_dataset(
+    dataset: Dataset | DatasetDict | IterableDataset | IterableDatasetDict,
+    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
+    output_path: Path,
+    text_key="text",
+    append_eod: bool = False,
+    workers: int = 1,
+):
+    batch_size = 10_000
+    eos_token = tokenizer.eos_token_id if append_eod else None
+    vocab_size = get_vocab_size(tokenizer)
+    if vocab_size > 2**32:
+        raise ValueError(f"Tokenizer vocab size {vocab_size} is too large for uint32")
+
+    data = get_dataset_iterator(dataset, batch_size)
+
+    # Tokenize and save as memory-mapped array
+    total_tokens = tokenize_and_write_mmap(
+        data, 
+        tokenizer, 
+        output_path, 
+        eos_token=eos_token,
+        text_key=text_key,
+        num_workers=workers,
+        dtype=np.dtype(np.uint16 if vocab_size < 2**16 else np.uint32)
+    )
+    print(f"{total_tokens} tokens saved to {output_path}")
 
 def get_vocab_size(tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast) -> int:
     """Get the vocab size of the tokenizer."""
@@ -48,15 +75,14 @@ def tokenize_batch(args):
 def tokenize_and_write_mmap(
     data: Generator,
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
-    output_prefix: str,
+    output_path: Path,
     text_key: str = "text",
-    batch_size: int = 1000,
     buffer_size: int = 10_000_000,
     eos_token: int | None = None,
     num_workers: int = 4,
     dtype: np.dtype = np.dtype(np.uint16)
 ):
-    mmap = np.memmap(f'{output_prefix}.bin', dtype=dtype, mode='w+', shape=(buffer_size,))
+    mmap = np.memmap(output_path, dtype=dtype, mode='w+', shape=(buffer_size,))
 
     total_tokens = 0
     pool = mp.Pool(num_workers)
@@ -67,109 +93,21 @@ def tokenize_and_write_mmap(
         new_tokens = pool.map(tokenize_batch, tokenize_args)[0]
 
         if total_tokens + len(new_tokens) > mmap.shape[0]:
-            mmap = np.memmap(f'{output_prefix}.bin', dtype=dtype, mode='r+', shape=(mmap.shape[0] * 2,))
+            mmap = np.memmap(output_path, dtype=dtype, mode='r+', shape=(mmap.shape[0] * 2,))
 
         mmap[total_tokens:total_tokens + len(new_tokens)] = new_tokens
         total_tokens += len(new_tokens)
-        pbar.update(batch_size)
+        pbar.update(len(batch))
 
     pool.close()
     pool.join()
 
     # Resize mmap to actual size
-    with open(f'{output_prefix}.bin', 'r+b') as f:
+    with open(output_path, 'r+b') as f:
         f.truncate(total_tokens * dtype.itemsize)
 
-    mmap = np.memmap(f'{output_prefix}.bin', dtype=dtype, mode='r+', shape=(total_tokens,))
+    mmap = np.memmap(output_path, dtype=dtype, mode='r+', shape=(total_tokens,))
     mmap.flush()
 
     pbar.close()
     return total_tokens
-
-def get_args(input_args=None):
-    parser = ArgumentParser()
-    group = parser.add_argument_group(title="input data")
-    group.add_argument(
-        "--dataset_name",
-        type=str,
-        required=True,
-        help="Name of the Hugging Face dataset to use",
-    )
-    group.add_argument(
-        "--config_name",
-        type=str,
-        default=None
-    )
-    group.add_argument(
-        "--split",
-        type=str,
-        default="train",
-        help="Hugging Face dataset split",
-    )
-    group.add_argument(
-        "--stream",
-        action="store_true",
-    )
-    group = parser.add_argument_group(title="tokenizer")
-    group.add_argument(
-        "--tokenizer_name",
-        type=str,
-        required=True,
-        help="Name or path of the pre-trained tokenizer to use",
-    )
-    group.add_argument(
-        "--append-eod",
-        action="store_true",
-        help="Append an <eod> token to the end of each sequence.",
-    )
-    group = parser.add_argument_group(title="output data")
-    group.add_argument(
-        "--output-prefix",
-        type=str,
-        required=True,
-        help="Path to binary output file without suffix",
-    )
-    group = parser.add_argument_group(title="runtime")
-    group.add_argument(
-        "--workers", type=int, default=1, help="Number of worker processes to launch"
-    )
-    args = parser.parse_args(input_args)
-
-    return args
-
-def main(input_args=None):
-    args = get_args(input_args)
-    batch_size = 10_000
-
-    # Get tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name)
-    eos_token = tokenizer.eos_token_id if args.append_eod else None
-    vocab_size = get_vocab_size(tokenizer)
-    if vocab_size > 2**32:
-        raise ValueError(f"Tokenizer vocab size {vocab_size} is too large for uint32")
-
-    # Get dataset iterator
-    os.makedirs('.cache', exist_ok=True)
-    dataset = load_dataset(
-        args.dataset_name, 
-        args.config_name,
-        cache_dir=os.path.join(os.getcwd(), '.cache'),
-        split=args.split,
-        streaming=args.stream,
-    )
-    data = get_dataset_iterator(dataset, batch_size)
-    
-    # Tokenize and save as memory-mapped array
-    total_tokens = tokenize_and_write_mmap(
-        data, 
-        tokenizer, 
-        args.output_prefix, 
-        eos_token=eos_token,
-        batch_size=batch_size,
-        num_workers=args.workers,
-        dtype=np.dtype(np.uint16 if vocab_size < 2**16 else np.uint32)
-    )
-    print(f"{total_tokens} tokens saved as memory-mapped array in {args.output_prefix}.bin")
-
-if __name__ == "__main__":
-    main()
