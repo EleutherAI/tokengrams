@@ -10,7 +10,7 @@ pub use sample::Sample;
 pub use table::SuffixTable;
 
 /// Python bindings
-#[cfg(feature = "python")]
+#[cfg(not(feature = "rust"))]
 use pyo3::prelude::*;
 
 mod bindings;
@@ -23,7 +23,7 @@ mod sharded_in_memory_index;
 mod table;
 mod util;
 
-#[cfg(feature = "python")]
+#[cfg(not(feature = "rust"))]
 #[pymodule]
 fn tokengrams(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<InMemoryIndex>()?;

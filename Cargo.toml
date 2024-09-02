@@ -11,8 +11,8 @@ name = "tokengrams"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = []
-python = ["pyo3/extension-module"]
+default = ["pyo3/extension-module"]
+rust = []
 
 [dependencies]
 anyhow = "1.0.81"

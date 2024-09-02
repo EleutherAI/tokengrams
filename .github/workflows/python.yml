@@ -24,6 +24,6 @@ jobs:
         run: |
           mamba install -c conda-forge numpy pytest hypothesis maturin
           maturin develop
-          maturin build --features python
+          maturin build
           python -m pip install --user ./target/wheels/tokengrams*.whl
           pytest
