@@ -1,19 +1,20 @@
 use anyhow::Result;
 use funty::Unsigned;
 use std::collections::HashMap;
+use rayon::prelude::*;
 
-use crate::bindings::memmap_index::MemmapIndexTrait;
-use crate::bindings::sharded_memmap_index::ShardedMemmapIndexTrait;
-use crate::memmap_index::MemmapIndexRs;
+use crate::in_memory_index::InMemoryIndexRs;
 use crate::sample::{KneserNeyCache, Sample};
+use crate::bindings::sharded_in_memory_index::ShardedInMemoryIndexTrait;
+use crate::bindings::in_memory_index::InMemoryIndexTrait;
 
 /// Expose suffix table functionality over text corpora too large to fit in memory.
-pub struct ShardedMemmapIndexRs<T: Unsigned> {
-    shards: Vec<MemmapIndexRs<T>>,
+pub struct ShardedInMemoryIndexRs<T: Unsigned> {
+    shards: Vec<InMemoryIndexRs<T>>,
     cache: KneserNeyCache,
 }
 
-impl<T: Unsigned> Sample<T> for ShardedMemmapIndexRs<T> {
+impl<T: Unsigned> Sample<T> for ShardedInMemoryIndexRs<T> {
     fn get_cache(&self) -> &KneserNeyCache {
         &self.cache
     }
@@ -25,7 +26,7 @@ impl<T: Unsigned> Sample<T> for ShardedMemmapIndexRs<T> {
     fn count_next_slice(&self, query: &[T]) -> Vec<usize> {
         let counts = self
             .shards
-            .iter()
+            .par_iter()
             .map(|shard| shard.count_next_slice(query))
             .collect::<Vec<_>>();
         (0..counts[0].len())
@@ -46,37 +47,23 @@ impl<T: Unsigned> Sample<T> for ShardedMemmapIndexRs<T> {
     }
 }
 
-impl<T: Unsigned> ShardedMemmapIndexRs<T> {
+impl<T: Unsigned> ShardedInMemoryIndexRs<T> {
     pub fn new(paths: Vec<(String, String)>, vocab: usize) -> Result<Self> {
-        let shards: Vec<MemmapIndexRs<T>> = paths
+        let shards: Vec<InMemoryIndexRs<T>> = paths
             .into_iter()
             .map(|(text_path, table_path)| {
-                MemmapIndexRs::new(text_path, table_path, vocab).unwrap()
+                InMemoryIndexRs::from_disk(text_path, table_path, vocab).unwrap()
             })
             .collect();
 
-        Ok(ShardedMemmapIndexRs {
-            shards,
-            cache: KneserNeyCache::default(),
-        })
-    }
-
-    pub fn build(paths: Vec<(String, String)>, vocab: usize, verbose: bool) -> Result<Self> {
-        let shards: Vec<MemmapIndexRs<T>> = paths
-            .into_iter()
-            .map(|(token_paths, index_paths)| {
-                MemmapIndexRs::build(token_paths, index_paths, vocab, verbose).unwrap()
-            })
-            .collect();
-
-        Ok(ShardedMemmapIndexRs {
+        Ok(ShardedInMemoryIndexRs {
             shards,
             cache: KneserNeyCache::default(),
         })
     }
 }
 
-impl<T: Unsigned> ShardedMemmapIndexTrait for ShardedMemmapIndexRs<T> {
+impl<T: Unsigned> ShardedInMemoryIndexTrait for ShardedInMemoryIndexRs<T> {
     fn is_sorted(&self) -> bool {
         self.shards.iter().all(|shard| shard.is_sorted())
     }

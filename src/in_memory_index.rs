@@ -1,6 +1,5 @@
 use anyhow::Result;
 use funty::Unsigned;
-use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -37,7 +36,7 @@ impl<T: Unsigned + Debug> InMemoryIndexRs<T> {
         token_limit: Option<usize>,
         vocab: usize,
         verbose: bool,
-    ) -> PyResult<Self> {
+    ) -> Result<Self> {
         let mut buffer = Vec::new();
         let mut file = File::open(&path)?;
 
@@ -61,17 +60,17 @@ impl<T: Unsigned + Debug> InMemoryIndexRs<T> {
 
     fn read_file_to_boxed_slice<E: Unsigned>(path: &str) -> Result<Box<[E]>> {
         let mut file = File::open(path)?;
-        let file_len = file.metadata()?.len() as usize;
+        let file_len_bytes = file.metadata()?.len() as usize;
 
         // Ensure file size is a multiple of size of E
-        if file_len % std::mem::size_of::<T>() != 0 {
+        if file_len_bytes % std::mem::size_of::<E>() != 0 {
             anyhow::bail!("File size is not a multiple of element size");
         }
 
-        let num_elements = file_len / std::mem::size_of::<E>();
+        let num_elements = file_len_bytes / std::mem::size_of::<E>();
         let mut vec: Vec<E> = Vec::with_capacity(num_elements);
         unsafe {
-            let buf = std::slice::from_raw_parts_mut(vec.as_mut_ptr() as *mut u8, file_len);
+            let buf = std::slice::from_raw_parts_mut(vec.as_mut_ptr() as *mut u8, file_len_bytes);
             file.read_exact(buf)?;
             vec.set_len(num_elements);
         }
@@ -79,7 +78,7 @@ impl<T: Unsigned + Debug> InMemoryIndexRs<T> {
         Ok(vec.into_boxed_slice())
     }
 
-    pub fn from_disk(text_path: String, table_path: String, vocab: usize) -> PyResult<Self> {
+    pub fn from_disk(text_path: String, table_path: String, vocab: usize) -> Result<Self> {
         let text = Self::read_file_to_boxed_slice::<T>(&text_path)?;
         let table = Self::read_file_to_boxed_slice::<u64>(&table_path)?;
 
