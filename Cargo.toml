@@ -10,6 +10,10 @@ edition = "2021"
 name = "tokengrams"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+python = ["pyo3/extension-module"]
+
 [dependencies]
 anyhow = "1.0.81"
 bincode = "1.3.3"
