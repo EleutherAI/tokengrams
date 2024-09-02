@@ -12,6 +12,9 @@ pip install tokengrams
 ```
 
 # Usage
+
+[Full text generation demo](https://colab.research.google.com/drive/1CEHoIjLboGl8YPbIqnWJlPYMm1wVOrrj?usp=sharing)
+
 ## Preparing data
 
 Use a dataset of u16 or u32 tokens, or prepare one from a HuggingFace dataset.
