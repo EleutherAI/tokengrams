@@ -117,7 +117,7 @@ index = InMemoryIndex(tokens, vocab=5)
 
 Larger corpora must use a MemmapIndex.
 
-Many systems struggle with memory mapping extremely large tables (e.g. 40 billion tokens), causing unexpected bus errors. To prevent this split the corpus into shards then use a ShardedMemmapIndex to sort and query the table shard by shard:
+Some systems struggle with memory mapping extremely large tables (e.g. 40 billion tokens), causing unexpected bus errors. To prevent this split the corpus into shards then use a ShardedMemmapIndex to sort and query the table shard by shard:
 
 ```python
 from tokengrams import ShardedMemmapIndex
