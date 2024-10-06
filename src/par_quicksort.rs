@@ -781,6 +781,7 @@ fn recurse<'a, T, F>(
         // Very short slices get sorted using insertion sort.
         if len <= MAX_INSERTION {
             insertion_sort(v, is_less);
+            pbar.inc(len as u64);
             return;
         }
 
@@ -788,6 +789,7 @@ fn recurse<'a, T, F>(
         // guarantee `O(n * log(n))` worst-case.
         if limit == 0 {
             heapsort(v, is_less);
+            pbar.inc(len as u64);
             return;
         }
 
@@ -807,6 +809,7 @@ fn recurse<'a, T, F>(
             // Try identifying several out-of-order elements and shifting them to correct
             // positions. If the slice ends up being completely sorted, we're done.
             if partial_insertion_sort(v, is_less) {
+                pbar.inc(len as u64);
                 return;
             }
         }
@@ -847,7 +850,6 @@ fn recurse<'a, T, F>(
                 v = left;
             }
         } else {
-            pbar.inc(1);
             // Sort the left and right half in parallel.
             rayon_core::join(
                 || recurse(left, is_less, pred, limit, pbar),
@@ -874,7 +876,8 @@ where
     // Limit the number of imbalanced partitions to `floor(log2(len)) + 1`.
     let limit = usize::BITS - v.len().leading_zeros();
     let pbar = if verbose {
-        let p = ProgressBar::new((v.len() as f64 / 2000.0).ceil() as u64);
+        // increment progression after each MAX_SEQUENTIAL length slice is sorted
+        let p = ProgressBar::new(v.len() as u64);
         p.set_style(
             ProgressStyle::with_template(
                 "{elapsed} elapsed (estimated duration {duration}) {bar:80}",
