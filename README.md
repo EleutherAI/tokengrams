@@ -137,7 +137,7 @@ index = ShardedMemmapIndex.build(index_paths, vocab=2**16, verbose=True)
 ```
 ### Tokens
 
-Tokengrams builds indices from on-disk corpora of either u16 or u32 tokens, supporting a maximum vocabulary size of 2<sup>32</sup>. In practice, however, vocabulary size is limited by the length of the largest word size vector the machine can allocate in memory. 
+Tokengrams builds indices from on-disk corpora of either u16 or u32 tokens, supporting a maximum vocabulary size of 2<sup>32</sup>. 
 
 Corpora with vocabulary sizes smaller than 2<sup>16</sup> must use u16 tokens.
 
